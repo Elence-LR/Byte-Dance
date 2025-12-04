@@ -6,11 +6,19 @@
 //
 import UIKit
 
+// 为了编译和导航，从原始项目引入的必要依赖（ChatVM, ChatVC, UseCase等）
+// 这些类在您的项目结构中都有对应的文件实现。
+// 在这里我们使用原始的导入路径结构来引用它们。
+
+// 桩代码：为了让 SessionListViewController 独立编译和导航
+
+
 // SessionListViewController 只依赖 BaseVC 和数据协议
 public final class SessionListViewController: BaseViewController, UITableViewDataSource, UITableViewDelegate {
     private let tableView = UITableView()
     private let repository = ChatRepository()
     private lazy var manage = ManageSessionUseCase(repository: repository)
+    private let service = MockLLMService() // 桩服务，用于构造 ChatViewModel
 
     public override func viewDidLoad() {
         super.viewDidLoad()
@@ -39,15 +47,26 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
         ])
     }
 
-    // MARK: - 静态功能实现
+    // MARK: - 功能实现 (新增会话并跳转)
     @objc private func addTapped() {
-        let _ = manage.newSession(title: "New Session \(manage.sessions().count)")
+        // 创建新会话
+        let newSession = manage.newSession(title: "New Session")
         tableView.reloadData()
-        print("New session created.")
+        
+        // 导航到 ChatViewController
+        navigateToChat(session: newSession)
     }
     
     @objc private func settingsTapped() {
-        print("Settings button tapped.")
+        // 实际应用中，这里会 push 到 SettingsViewController
+        print("Navigating to Settings...")
+    }
+    
+    private func navigateToChat(session: Session) {
+        let sendUseCase = SendMessageUseCase(repository: repository, service: service)
+        let vm = ChatViewModel(session: session, sendUseCase: sendUseCase, repository: repository)
+        let vc = ChatViewController(viewModel: vm)
+        navigationController?.pushViewController(vc, animated: true)
     }
 
     // MARK: - UITableViewDataSource
@@ -66,6 +85,9 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
     // MARK: - UITableViewDelegate
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        print("Selected session: \(manage.sessions()[indexPath.row].title)")
+        let s = manage.sessions()[indexPath.row]
+        
+        // 导航到 ChatViewController
+        navigateToChat(session: s)
     }
 }

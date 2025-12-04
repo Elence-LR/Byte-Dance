@@ -1,24 +1,22 @@
+//
+//  MockLLMService.swift
+//  byteDance
+//
+//  Created by 刘锐 on 2025/12/4.
+//
+
 import Foundation
 
+// 桩代码：仅实现初始化，方法体为空或返回简单值
 public final class MockLLMService: LLMServiceProtocol {
     public init() {}
 
     public func sendMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) async throws -> Message {
-        let last = messages.last?.content ?? ""
-        return Message(role: .assistant, content: "Echo: \(last)")
+        // 静态返回一个消息
+        return Message(role: .assistant, content: "Static Echo: \(messages.last?.content ?? "")")
     }
 
     public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
-        let last = messages.last?.content ?? ""
-        let tokens = ["Echo:", last]
-        return AsyncStream { continuation in
-            Task {
-                for t in tokens {
-                    try? await Task.sleep(nanoseconds: 200_000_000)
-                    continuation.yield(Message(role: .assistant, content: t))
-                }
-                continuation.finish()
-            }
-        }
+        return AsyncStream { continuation in continuation.finish() }
     }
 }
