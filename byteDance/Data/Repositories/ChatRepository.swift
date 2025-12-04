@@ -1,18 +1,9 @@
-//
-//  ChatRepository.swift
-//  byteDance
-//
-//  Created by 刘锐 on 2025/12/4.
-//
 import Foundation
 
 public final class ChatRepository: ChatRepositoryProtocol {
     private var sessions: [Session] = []
 
-    public init() {
-        // 添加一个示例会话，确保列表有内容
-        sessions.append(Session(title: "Initial Chat", messages: [Message(role: .user, content: "Hello")], archived: false))
-    }
+    public init() {}
 
     public func fetchSessions() -> [Session] {
         sessions
@@ -23,10 +14,29 @@ public final class ChatRepository: ChatRepositoryProtocol {
         sessions.append(session)
         return session
     }
+
+    public func renameSession(id: UUID, title: String) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        sessions[index].title = title
+    }
+
+    public func archiveSession(id: UUID) {
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
+        sessions[index].archived = true
+    }
+
+    public func appendMessage(sessionID: UUID, message: Message) {
+        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[index].messages.append(message)
+    }
+
+    public func fetchMessages(sessionID: UUID) -> [Message] {
+        sessions.first(where: { $0.id == sessionID })?.messages ?? []
+    }
     
-    // 桩代码，仅用于满足协议
-    public func renameSession(id: UUID, title: String) {}
-    public func archiveSession(id: UUID) {}
-    public func appendMessage(sessionID: UUID, message: Message) {}
-    public func fetchMessages(sessionID: UUID) -> [Message] { return [] }
+    public func updateMessageContent(sessionID: UUID, messageID: UUID, content: String) {
+        guard let sIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        guard let mIndex = sessions[sIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
+        sessions[sIndex].messages[mIndex].content = content
+    }
 }

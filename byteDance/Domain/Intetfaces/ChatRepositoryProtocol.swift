@@ -13,4 +13,5 @@ public protocol ChatRepositoryProtocol {
     func archiveSession(id: UUID)
     func appendMessage(sessionID: UUID, message: Message)
     func fetchMessages(sessionID: UUID) -> [Message]
+    func updateMessageContent(sessionID: UUID, messageID: UUID, content: String)
 }

@@ -10,7 +10,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     private let tableView = UITableView()
     private let inputBar = InputBarView()
     private let viewModel: ChatViewModel
-    private let config = AIModelConfig() // 使用默认配置
+    private let config = AIModelConfig(modelName: "deepseek-chat", apiKey: "sk-24696f0c8e1f490386d913ef1caba425") // 使用默认配置
 
     public init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
@@ -72,7 +72,8 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         // 发送按钮逻辑：调用 ViewModel 发送消息
         inputBar.onSend = { [weak self] text in
             guard let self else { return }
-            self.viewModel.send(text: text, config: self.config)
+            self.viewModel.stream(text: text, config: self.config)
+//            print("sending message...")
         }
     }
 

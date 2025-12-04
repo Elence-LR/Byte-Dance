@@ -12,7 +12,7 @@ public struct AIModelConfig: Codable, Equatable {
     public var tokenLimit: Int
     public var apiKey: String?
 
-    public init(modelName: String = "gpt-4o-mini", temperature: Double = 0.7, tokenLimit: Int = 4096, apiKey: String? = nil) {
+    public init(modelName: String = "deepseek-chat", temperature: Double = 0.7, tokenLimit: Int = 4096, apiKey: String? = nil) {
         self.modelName = modelName
         self.temperature = temperature
         self.tokenLimit = tokenLimit
