@@ -18,7 +18,9 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
     private let tableView = UITableView()
     private let repository = ChatRepository()
     private lazy var manage = ManageSessionUseCase(repository: repository)
-    private let service = MockLLMService() // 桩服务，用于构造 ChatViewModel
+
+    private let service = OpenAIAdapter() // 桩服务，用于构造 ChatViewModel
+
 
     public override func viewDidLoad() {
         super.viewDidLoad()

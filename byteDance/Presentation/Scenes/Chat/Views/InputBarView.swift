@@ -14,6 +14,7 @@ public final class InputBarView: UIView {
     // 李相瑜新增：图片按钮点击回调
     public var onImageButtonTapped: (() -> Void)?
     
+
     public override init(frame: CGRect) {
         super.init(frame: frame)
         setup()
