@@ -6,14 +6,16 @@
 //
 import UIKit
 
-public final class InputBarView: UIView {
-    public let textField = UITextField()
+public final class InputBarView: UIView, UITextViewDelegate {
+    public let imageButton = UIButton(type: .system)
+    public let textView = UITextView()
     public let sendButton = UIButton(type: .system)
     public var onSend: ((String) -> Void)?
-    
-    // 李相瑜新增：图片按钮点击回调
     public var onImageButtonTapped: (() -> Void)?
-    
+
+    private var textViewHeightConstraint: NSLayoutConstraint?
+    private let minInputHeight: CGFloat = 36
+    private let maxInputHeight: CGFloat = 120
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
@@ -26,28 +28,68 @@ public final class InputBarView: UIView {
     }
 
     private func setup() {
-        textField.borderStyle = .roundedRect
+        imageButton.setTitle("📷", for: .normal)
+        imageButton.titleLabel?.font = UIFont.systemFont(ofSize: 20)
+        imageButton.addTarget(self, action: #selector(imageButtonTapped), for: .touchUpInside)
+
+        textView.isScrollEnabled = false
+        textView.delegate = self
+        textView.font = UIFont.preferredFont(forTextStyle: .body)
+        textView.layer.cornerRadius = 8
+        textView.layer.borderWidth = 1
+        textView.layer.borderColor = UIColor.separator.cgColor
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+
         sendButton.setTitle(NSLocalizedString("Send", comment: ""), for: .normal)
-        let stack = UIStackView(arrangedSubviews: [textField, sendButton])
+        sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [imageButton, textView, sendButton])
         stack.axis = .horizontal
         stack.spacing = 8
+        stack.alignment = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+
+        sendButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        sendButton.setContentHuggingPriority(.required, for: .horizontal)
+        imageButton.setContentHuggingPriority(.required, for: .horizontal)
+        imageButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        textViewHeightConstraint = textView.heightAnchor.constraint(equalToConstant: minInputHeight)
+        textViewHeightConstraint?.isActive = true
+
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8)
         ])
-        sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
-        
-        // 李相瑜新增：调用图片按钮 setup 
-        setupImageButton()
     }
 
     @objc private func sendTapped() {
-        guard let text = textField.text, !text.isEmpty else { return }
+        let text = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
         onSend?(text)
-        textField.text = ""
+        textView.text = ""
+        updateTextViewHeight()
+    }
+
+    @objc private func imageButtonTapped() {
+        onImageButtonTapped?()
+    }
+
+    public func textViewDidChange(_ textView: UITextView) {
+        updateTextViewHeight()
+    }
+
+    private func updateTextViewHeight() {
+        let fittingSize = CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
+        let targetHeight = max(minInputHeight, textView.sizeThatFits(fittingSize).height)
+        let clamped = min(targetHeight, maxInputHeight)
+        textView.isScrollEnabled = targetHeight > maxInputHeight
+        textViewHeightConstraint?.constant = clamped
+        layoutIfNeeded()
     }
 }
