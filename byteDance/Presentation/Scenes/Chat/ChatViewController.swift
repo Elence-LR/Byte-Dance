@@ -44,12 +44,14 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(MessageCell.self, forCellReuseIdentifier: MessageCell.reuseId)
-        // 移除分隔线，更像聊天 UI
         tableView.separatorStyle = .none
-        view.addSubview(tableView)
         
-        // 约束设置在 setupInput 中完成
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 60
+
+        view.addSubview(tableView)
     }
+
 
     private func setupInput() {
         inputBar.translatesAutoresizingMaskIntoConstraints = false
@@ -74,7 +76,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         // 文本发送按钮逻辑：调用 ViewModel 发送消息
         inputBar.onSend = { [weak self] text in
             guard let self else { return }
-            self.viewModel.send(text: text, config: self.config)
+            self.viewModel.stream(text: text, config: self.config)
         }
         
         //李相瑜新增：图片按钮点击 -> 弹 picker

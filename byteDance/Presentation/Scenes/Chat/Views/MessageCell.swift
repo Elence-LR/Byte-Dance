@@ -1,14 +1,16 @@
-//
-//  MessageCell.swift
-//  byteDance
-//
-//  Created by 刘锐 on 2025/12/4.
-//
 import UIKit
 
 public final class MessageCell: UITableViewCell {
     public static let reuseId = "MessageCell"
-    private let label = UILabel()
+
+    private let bubbleView = UIView()
+    private let messageLabel = UILabel()
+
+    private var leadingConstraint: NSLayoutConstraint!
+    private var trailingConstraint: NSLayoutConstraint!
+    private var centerConstraint: NSLayoutConstraint!
+
+    private let maxBubbleWidthRatio: CGFloat = 0.78
 
     public override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -21,27 +23,90 @@ public final class MessageCell: UITableViewCell {
     }
 
     private func setup() {
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(label)
+        selectionStyle = .none
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
+
+        bubbleView.translatesAutoresizingMaskIntoConstraints = false
+        bubbleView.layer.cornerRadius = 18
+        bubbleView.layer.masksToBounds = true
+        contentView.addSubview(bubbleView)
+
+        messageLabel.translatesAutoresizingMaskIntoConstraints = false
+        messageLabel.numberOfLines = 0
+        messageLabel.font = .systemFont(ofSize: 16)
+        messageLabel.textAlignment = .left
+        bubbleView.addSubview(messageLabel)
+
+        leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
+        trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
+        centerConstraint = bubbleView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor)
+
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-            label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            label.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            label.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12)
+            bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
+            bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
+
+            // 最大宽度，避免整行铺满
+            bubbleView.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: maxBubbleWidthRatio),
+
+            messageLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 10),
+            messageLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
+            messageLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
+            messageLabel.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -10),
         ])
+
+        // 默认 assistant（左）
+        leadingConstraint.isActive = true
+        trailingConstraint.isActive = false
+        centerConstraint.isActive = false
     }
 
-    // 假设您已经有了 Message 和 Role 的定义 (来自前一步)
+    public override func prepareForReuse() {
+        super.prepareForReuse()
+        messageLabel.text = nil
+        // 复用时把约束状态重置，避免 system 居中残留
+        leadingConstraint.isActive = true
+        trailingConstraint.isActive = false
+        centerConstraint.isActive = false
+
+        bubbleView.backgroundColor = .secondarySystemBackground
+        messageLabel.textColor = .label
+        messageLabel.textAlignment = .left
+    }
+
     public func configure(with message: Message) {
-        label.text = message.content
+        messageLabel.text = message.content
+
         switch message.role {
         case .user:
-            label.textAlignment = .right
+            // 右侧气泡
+            leadingConstraint.isActive = false
+            centerConstraint.isActive = false
+            trailingConstraint.isActive = true
+
+            bubbleView.backgroundColor = .systemBlue
+            messageLabel.textColor = .white
+            messageLabel.textAlignment = .left
+
         case .assistant:
-            label.textAlignment = .left
+            // 左侧气泡
+            trailingConstraint.isActive = false
+            centerConstraint.isActive = false
+            leadingConstraint.isActive = true
+
+            bubbleView.backgroundColor = .secondarySystemBackground
+            messageLabel.textColor = .label
+            messageLabel.textAlignment = .left
+
         case .system:
-            label.textAlignment = .center
+            // 居中提示（比如“已清空对话/模型切换”）
+            leadingConstraint.isActive = false
+            trailingConstraint.isActive = false
+            centerConstraint.isActive = true
+
+            bubbleView.backgroundColor = .tertiarySystemFill
+            messageLabel.textColor = .secondaryLabel
+            messageLabel.textAlignment = .center
         }
     }
 }
