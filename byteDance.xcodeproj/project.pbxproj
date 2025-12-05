@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		DBC33EF22EE329AE00E11542 /* Down in Frameworks */ = {isa = PBXBuildFile; productRef = DBC33EF12EE329AE00E11542 /* Down */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		DBC33DFB2EE176F900E11542 /* byteDance.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = byteDance.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -36,6 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DBC33EF22EE329AE00E11542 /* Down in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +83,7 @@
 			);
 			name = byteDance;
 			packageProductDependencies = (
+				DBC33EF12EE329AE00E11542 /* Down */,
 			);
 			productName = byteDance;
 			productReference = DBC33DFB2EE176F900E11542 /* byteDance.app */;
@@ -107,6 +113,9 @@
 			);
 			mainGroup = DBC33DF22EE176F900E11542;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DBC33EF02EE329AD00E11542 /* XCRemoteSwiftPackageReference "Down" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DBC33DFC2EE176F900E11542 /* Products */;
 			projectDirPath = "";
@@ -347,6 +356,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DBC33EF02EE329AD00E11542 /* XCRemoteSwiftPackageReference "Down" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/johnxnguyen/Down.git";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DBC33EF12EE329AE00E11542 /* Down */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DBC33EF02EE329AD00E11542 /* XCRemoteSwiftPackageReference "Down" */;
+			productName = Down;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = DBC33DF32EE176F900E11542 /* Project object */;
 }

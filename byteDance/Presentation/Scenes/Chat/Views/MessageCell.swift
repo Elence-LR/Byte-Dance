@@ -1,4 +1,7 @@
 import UIKit
+#if canImport(Down)
+import Down
+#endif
 
 public final class MessageCell: UITableViewCell {
     public static let reuseId = "MessageCell"
@@ -64,6 +67,7 @@ public final class MessageCell: UITableViewCell {
     public override func prepareForReuse() {
         super.prepareForReuse()
         messageLabel.text = nil
+        messageLabel.attributedText = nil
         // 复用时把约束状态重置，避免 system 居中残留
         leadingConstraint.isActive = true
         trailingConstraint.isActive = false
@@ -75,7 +79,10 @@ public final class MessageCell: UITableViewCell {
     }
 
     public func configure(with message: Message) {
-        messageLabel.text = message.content
+        var attr: NSAttributedString?
+        #if canImport(Down)
+        attr = try? Down(markdownString: message.content).toAttributedString()
+        #endif
 
         switch message.role {
         case .user:
@@ -87,6 +94,13 @@ public final class MessageCell: UITableViewCell {
             bubbleView.backgroundColor = .systemBlue
             messageLabel.textColor = .white
             messageLabel.textAlignment = .left
+            if let a = attr {
+                let m = NSMutableAttributedString(attributedString: a)
+                m.addAttribute(.foregroundColor, value: UIColor.white, range: NSRange(location: 0, length: m.length))
+                messageLabel.attributedText = m
+            } else {
+                messageLabel.text = message.content
+            }
 
         case .assistant:
             // 左侧气泡
@@ -97,6 +111,11 @@ public final class MessageCell: UITableViewCell {
             bubbleView.backgroundColor = .secondarySystemBackground
             messageLabel.textColor = .label
             messageLabel.textAlignment = .left
+            if let a = attr {
+                messageLabel.attributedText = a
+            } else {
+                messageLabel.text = message.content
+            }
 
         case .system:
             // 居中提示（比如“已清空对话/模型切换”）
@@ -107,6 +126,7 @@ public final class MessageCell: UITableViewCell {
             bubbleView.backgroundColor = .tertiarySystemFill
             messageLabel.textColor = .secondaryLabel
             messageLabel.textAlignment = .center
+            messageLabel.text = message.content
         }
     }
 }
