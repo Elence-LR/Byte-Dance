@@ -19,7 +19,8 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
     private let repository = ChatRepository()
     private lazy var manage = ManageSessionUseCase(repository: repository)
 
-    private let service = OpenAIAdapter() // 桩服务，用于构造 ChatViewModel
+//    private let service = DashScopeAdapter() // 桩服务，用于构造 ChatViewModel
+    private let llmService: LLMServiceProtocol = LLMServiceRouter()
 
 
     public override func viewDidLoad() {
@@ -65,7 +66,7 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
     }
     
     private func navigateToChat(session: Session) {
-        let sendUseCase = SendMessageUseCase(repository: repository, service: service)
+        let sendUseCase = SendMessageUseCase(repository: repository, service: llmService)
         let vm = ChatViewModel(session: session, sendUseCase: sendUseCase, repository: repository)
         let vc = ChatViewController(viewModel: vm)
         navigationController?.pushViewController(vc, animated: true)

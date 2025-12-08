@@ -12,7 +12,28 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     private let inputBar = InputBarView()
     private let viewModel: ChatViewModel
 
-    private let config = AIModelConfig(modelName: "deepseek-chat", apiKey: "sk-24696f0c8e1f490386d913ef1caba425") // 使用默认配置
+    // 模型选择
+    private struct ModelOption {
+            let title: String        // 按钮展示名
+            let config: AIModelConfig
+        }
+
+    private lazy var modelOptions: [ModelOption] = [
+        .init(title: "DeepSeek", config: AIModelConfig(provider: .openAIStyle, modelName: "deepseek-chat", apiKey: "sk-24696f0c8e1f490386d913ef1caba425")),
+        .init(title: "Qwen3-Max",   config: AIModelConfig(provider: .dashscope, modelName: "qwen3-max", apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
+    ]
+
+    private var currentModelIndex: Int = 0 {
+        didSet { updateModelButtonTitle() }
+    }
+
+    private var currentConfig: AIModelConfig {
+        modelOptions[currentModelIndex].config
+    }
+
+    private let modelButton = UIButton(type: .system)
+    
+    
 
     public init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
@@ -28,6 +49,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         title = viewModel.session.title
         setupTable()
         setupInput()
+        setupModelSwitcher()
         
         // 消息更新回调，用于刷新 UI
         viewModel.onNewMessage = { [weak self] _ in
@@ -48,6 +70,12 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 60
+        
+        if #available(iOS 15.0, *) {
+            tableView.isPrefetchingEnabled = false
+        } else {
+            tableView.prefetchDataSource = nil
+        }
 
         view.addSubview(tableView)
     }
@@ -76,7 +104,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         // 文本发送按钮逻辑：调用 ViewModel 发送消息
         inputBar.onSend = { [weak self] text in
             guard let self else { return }
-            self.viewModel.stream(text: text, config: self.config)
+            self.viewModel.stream(text: text, config: self.currentConfig)
         }
         
         //李相瑜新增：图片按钮点击 -> 弹 picker
@@ -125,3 +153,52 @@ extension ChatViewController: PHPickerViewControllerDelegate {
     }
 }
 
+
+extension ChatViewController {
+    
+    private func setupModelSwitcher() {
+        // 胶囊样式按钮
+        var config = UIButton.Configuration.filled()
+        config.cornerStyle = .capsule
+        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
+        config.imagePlacement = .trailing
+        config.imagePadding = 6
+        modelButton.configuration = config
+
+        modelButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        modelButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+
+        // iOS 14+：点按钮直接弹出菜单
+        modelButton.showsMenuAsPrimaryAction = true
+        rebuildModelMenu()
+        updateModelButtonTitle()
+
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: modelButton)
+    }
+
+    
+    private func rebuildModelMenu() {
+        let actions = modelOptions.enumerated().map { idx, opt in
+            UIAction(title: opt.title, state: (idx == currentModelIndex ? .on : .off)) { [weak self] _ in
+                self?.switchModel(to: idx)
+            }
+        }
+        modelButton.menu = UIMenu(title: "选择模型", children: actions)
+    }
+
+    
+    private func updateModelButtonTitle() {
+        modelButton.setTitle(modelOptions[currentModelIndex].title, for: .normal)
+        rebuildModelMenu() // 让“对勾”状态刷新
+    }
+
+    
+    private func switchModel(to index: Int) {
+        guard index != currentModelIndex else { return }
+        currentModelIndex = index
+        Task { @MainActor in
+            viewModel.addSystemTip("已切换到：\(modelOptions[index].title)")
+        }
+    }
+
+}

@@ -93,8 +93,17 @@ public final class ChatViewModel {
         }
     }
 
+    
     public func messages() -> [Message] {
         repository.fetchMessages(sessionID: session.id)
+    }
+    
+    
+    @MainActor
+    public func addSystemTip(_ text: String) {
+        let tip = Message(role: .system, content: text)
+        repository.appendMessage(sessionID: session.id, message: tip)
+        onNewMessage?(tip)
     }
 
 }

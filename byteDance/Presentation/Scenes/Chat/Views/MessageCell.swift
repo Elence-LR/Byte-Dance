@@ -9,9 +9,12 @@ public final class MessageCell: UITableViewCell {
     private let bubbleView = UIView()
     private let messageLabel = UILabel()
 
-    private var leadingConstraint: NSLayoutConstraint!
-    private var trailingConstraint: NSLayoutConstraint!
+    private var leftLeading: NSLayoutConstraint!
+    private var leftTrailingMax: NSLayoutConstraint!   // <=
+    private var rightTrailing: NSLayoutConstraint!
+    private var rightLeadingMin: NSLayoutConstraint!   // >=
     private var centerConstraint: NSLayoutConstraint!
+
 
     private let maxBubbleWidthRatio: CGFloat = 0.78
 
@@ -41,9 +44,14 @@ public final class MessageCell: UITableViewCell {
         messageLabel.textAlignment = .left
         bubbleView.addSubview(messageLabel)
 
-        leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
-        trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
+        leftLeading = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
+        leftTrailingMax = bubbleView.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -64)
+
+        rightTrailing = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
+        rightLeadingMin = bubbleView.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 64)
+
         centerConstraint = bubbleView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor)
+
 
         NSLayoutConstraint.activate([
             bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
@@ -58,20 +66,27 @@ public final class MessageCell: UITableViewCell {
             messageLabel.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -10),
         ])
 
-        // 默认 assistant（左）
-        leadingConstraint.isActive = true
-        trailingConstraint.isActive = false
+        leftLeading.isActive = true
+        leftTrailingMax.isActive = true
+
+        rightTrailing.isActive = false
+        rightLeadingMin.isActive = false
         centerConstraint.isActive = false
+
     }
 
     public override func prepareForReuse() {
         super.prepareForReuse()
         messageLabel.text = nil
         messageLabel.attributedText = nil
-        // 复用时把约束状态重置，避免 system 居中残留
-        leadingConstraint.isActive = true
-        trailingConstraint.isActive = false
+        
+        leftLeading.isActive = true
+        leftTrailingMax.isActive = true
+
+        rightTrailing.isActive = false
+        rightLeadingMin.isActive = false
         centerConstraint.isActive = false
+
 
         bubbleView.backgroundColor = .secondarySystemBackground
         messageLabel.textColor = .label
@@ -87,9 +102,17 @@ public final class MessageCell: UITableViewCell {
         switch message.role {
         case .user:
             // 右侧气泡
-            leadingConstraint.isActive = false
+            // 先全部关掉，防止复用短暂同时 active
+            leftLeading.isActive = false
+            leftTrailingMax.isActive = false
+            rightTrailing.isActive = false
+            rightLeadingMin.isActive = false
             centerConstraint.isActive = false
-            trailingConstraint.isActive = true
+
+            // 右侧开启：trailing == -16 + leading >= 64
+            rightTrailing.isActive = true
+            rightLeadingMin.isActive = true
+
 
             bubbleView.backgroundColor = .systemBlue
             messageLabel.textColor = .white
@@ -104,9 +127,16 @@ public final class MessageCell: UITableViewCell {
 
         case .assistant:
             // 左侧气泡
-            trailingConstraint.isActive = false
+            leftLeading.isActive = false
+            leftTrailingMax.isActive = false
+            rightTrailing.isActive = false
+            rightLeadingMin.isActive = false
             centerConstraint.isActive = false
-            leadingConstraint.isActive = true
+
+            // 左侧开启：leading == 16 + trailing <= -64
+            leftLeading.isActive = true
+            leftTrailingMax.isActive = true
+
 
             bubbleView.backgroundColor = .secondarySystemBackground
             messageLabel.textColor = .label
@@ -119,9 +149,12 @@ public final class MessageCell: UITableViewCell {
 
         case .system:
             // 居中提示（比如“已清空对话/模型切换”）
-            leadingConstraint.isActive = false
-            trailingConstraint.isActive = false
+            leftLeading.isActive = false
+            leftTrailingMax.isActive = false
+            rightTrailing.isActive = false
+            rightLeadingMin.isActive = false
             centerConstraint.isActive = true
+
 
             bubbleView.backgroundColor = .tertiarySystemFill
             messageLabel.textColor = .secondaryLabel

@@ -6,13 +6,22 @@
 //
 import Foundation
 
+
+public enum LLMProvider: String, Codable {
+    case openAIStyle   // OpenAI协议下DeepSeek
+    case dashscope     // DashScope 原生协议
+}
+
 public struct AIModelConfig: Codable, Equatable {
+    public var provider: LLMProvider
     public var modelName: String
     public var temperature: Double
     public var tokenLimit: Int
     public var apiKey: String?
+    
 
-    public init(modelName: String = "deepseek-chat", temperature: Double = 0.7, tokenLimit: Int = 4096, apiKey: String? = nil) {
+    public init(provider: LLMProvider = .openAIStyle, modelName: String = "deepseek-chat", temperature: Double = 0.7, tokenLimit: Int = 4096, apiKey: String? = nil) {
+        self.provider = provider
         self.modelName = modelName
         self.temperature = temperature
         self.tokenLimit = tokenLimit

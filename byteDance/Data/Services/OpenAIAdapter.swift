@@ -18,8 +18,8 @@ public final class OpenAIAdapter: LLMServiceProtocol {
     }
 
     public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
-        let url = APIEndpoints.streamURL(model: config.modelName)
-        let headers = APIEndpoints.headers(apiKey: config.apiKey ?? "")
+        let url = APIEndpoints.openAIStyleStreamURL()
+        let headers = APIEndpoints.openAIStyleHeaders(apiKey: config.apiKey ?? "")
 //        print(url, headers)
 
         let bodyMessages = messages.map { ["role": $0.role.rawValue, "content": $0.content] }
