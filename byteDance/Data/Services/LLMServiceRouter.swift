@@ -10,16 +10,20 @@ import Foundation
 public final class LLMServiceRouter: LLMServiceProtocol {
     private let openAIStyle: LLMServiceProtocol
     private let dashscope: LLMServiceProtocol
+    private let templateMock: LLMServiceProtocol
 
     public init(
         openAIStyle: LLMServiceProtocol = OpenAIAdapter(),
-        dashscope: LLMServiceProtocol = DashScopeAdapter()
+        dashscope: LLMServiceProtocol = DashScopeAdapter(),
+        templateMock: LLMServiceProtocol = TemplateMockAdapter()
     ) {
         self.openAIStyle = openAIStyle
         self.dashscope = dashscope
+        self.templateMock = templateMock
     }
 
     private func service(for config: AIModelConfig) -> LLMServiceProtocol {
+        if UserDefaults.standard.bool(forKey: "test_mode_enabled") { return templateMock }
         switch config.provider {
         case .openAIStyle: return openAIStyle
         case .dashscope:   return dashscope

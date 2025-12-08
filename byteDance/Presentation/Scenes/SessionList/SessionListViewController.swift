@@ -61,8 +61,8 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
     }
     
     @objc private func settingsTapped() {
-        // 实际应用中，这里会 push 到 SettingsViewController
-        print("Navigating to Settings...")
+        let vc = SettingsViewController()
+        navigationController?.pushViewController(vc, animated: true)
     }
     
     private func navigateToChat(session: Session) {
