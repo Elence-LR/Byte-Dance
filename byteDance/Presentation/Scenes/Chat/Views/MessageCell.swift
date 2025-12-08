@@ -7,7 +7,7 @@ public final class MessageCell: UITableViewCell {
     public static let reuseId = "MessageCell"
 
     private let bubbleView = UIView()
-    private let messageLabel = UILabel()
+    private let contentStack = UIStackView()
 
     private var leftLeading: NSLayoutConstraint!
     private var leftTrailingMax: NSLayoutConstraint!   // <=
@@ -38,11 +38,10 @@ public final class MessageCell: UITableViewCell {
         bubbleView.layer.masksToBounds = true
         contentView.addSubview(bubbleView)
 
-        messageLabel.translatesAutoresizingMaskIntoConstraints = false
-        messageLabel.numberOfLines = 0
-        messageLabel.font = .systemFont(ofSize: 16)
-        messageLabel.textAlignment = .left
-        bubbleView.addSubview(messageLabel)
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.axis = .vertical
+        contentStack.spacing = 2
+        bubbleView.addSubview(contentStack)
 
         leftLeading = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
         leftTrailingMax = bubbleView.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -64)
@@ -54,16 +53,16 @@ public final class MessageCell: UITableViewCell {
 
 
         NSLayoutConstraint.activate([
-            bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
-            bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -6),
+            bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
 
             // 最大宽度，避免整行铺满
             bubbleView.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: maxBubbleWidthRatio),
 
-            messageLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 10),
-            messageLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
-            messageLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
-            messageLabel.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -10),
+            contentStack.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 4),
+            contentStack.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
+            contentStack.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
+            contentStack.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -4),
         ])
 
         leftLeading.isActive = true
@@ -77,8 +76,7 @@ public final class MessageCell: UITableViewCell {
 
     public override func prepareForReuse() {
         super.prepareForReuse()
-        messageLabel.text = nil
-        messageLabel.attributedText = nil
+        contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         
         leftLeading.isActive = true
         leftTrailingMax.isActive = true
@@ -89,14 +87,34 @@ public final class MessageCell: UITableViewCell {
 
 
         bubbleView.backgroundColor = .secondarySystemBackground
-        messageLabel.textColor = .label
-        messageLabel.textAlignment = .left
+        
     }
 
     public func configure(with message: Message) {
-        var attr: NSAttributedString?
+        contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let segments = parseSegments(from: message.content)
         #if canImport(Down)
-        attr = try? Down(markdownString: message.content).toAttributedString()
+        for seg in segments {
+            switch seg.kind {
+            case .text:
+                let text = try? Down(markdownString: seg.content).toAttributedString()
+                let label = UILabel()
+                label.numberOfLines = 0
+                label.font = .systemFont(ofSize: 18)
+                if let t = text { label.attributedText = tightenAttributedString(t) } else { label.text = seg.content }
+                contentStack.addArrangedSubview(label)
+            case .code:
+                let codeView = CodeBlockView()
+                codeView.text = seg.content
+                contentStack.addArrangedSubview(codeView)
+            }
+        }
+        #else
+        let label = UILabel()
+        label.numberOfLines = 0
+        label.font = .systemFont(ofSize: 18)
+        label.text = message.content
+        contentStack.addArrangedSubview(label)
         #endif
 
         switch message.role {
@@ -115,14 +133,24 @@ public final class MessageCell: UITableViewCell {
 
 
             bubbleView.backgroundColor = .systemBlue
-            messageLabel.textColor = .white
-            messageLabel.textAlignment = .left
-            if let a = attr {
-                let m = NSMutableAttributedString(attributedString: a)
-                m.addAttribute(.foregroundColor, value: UIColor.white, range: NSRange(location: 0, length: m.length))
-                messageLabel.attributedText = m
-            } else {
-                messageLabel.text = message.content
+            contentStack.arrangedSubviews.forEach { v in
+                if let l = v as? UILabel {
+                    l.textColor = .white
+                    if let a = l.attributedText {
+                        let scaled = scaleAttributedString(a, factor: 1.15)
+                        let centered = centerAttributedString(scaled)
+                        let m = NSMutableAttributedString(attributedString: centered)
+                        m.addAttribute(.foregroundColor, value: UIColor.white, range: NSRange(location: 0, length: m.length))
+                        l.attributedText = m
+                        l.textAlignment = .center
+                    } else {
+                        l.font = .systemFont(ofSize: 20)
+                        l.textAlignment = .center
+                    }
+                } else if let cb = v as? CodeBlockView {
+                    cb.textColor = .white
+                    cb.backgroundColor = UIColor.white.withAlphaComponent(0.15)
+                }
             }
 
         case .assistant:
@@ -139,12 +167,13 @@ public final class MessageCell: UITableViewCell {
 
 
             bubbleView.backgroundColor = .secondarySystemBackground
-            messageLabel.textColor = .label
-            messageLabel.textAlignment = .left
-            if let a = attr {
-                messageLabel.attributedText = a
-            } else {
-                messageLabel.text = message.content
+            contentStack.arrangedSubviews.forEach { v in
+                if let l = v as? UILabel {
+                    l.textColor = .label
+                } else if let cb = v as? CodeBlockView {
+                    cb.textColor = .label
+                    cb.backgroundColor = UIColor.tertiarySystemFill
+                }
             }
 
         case .system:
@@ -157,9 +186,114 @@ public final class MessageCell: UITableViewCell {
 
 
             bubbleView.backgroundColor = .tertiarySystemFill
-            messageLabel.textColor = .secondaryLabel
-            messageLabel.textAlignment = .center
-            messageLabel.text = message.content
+            contentStack.arrangedSubviews.forEach { v in
+                if let l = v as? UILabel {
+                    l.textColor = .secondaryLabel
+                    l.textAlignment = .center
+                } else if let cb = v as? CodeBlockView {
+                    cb.textColor = .secondaryLabel
+                    cb.backgroundColor = UIColor.tertiarySystemFill
+                }
+            }
         }
+    }
+
+    private func parseSegments(from text: String) -> [(kind: SegmentKind, content: String, lang: String?)] {
+        var result: [(SegmentKind, String, String?)] = []
+        var i = text.startIndex
+        var buffer = ""
+        while i < text.endIndex {
+            if text[i] == "`" {
+                let next = text.index(i, offsetBy: 3, limitedBy: text.endIndex) ?? text.endIndex
+                let fence = text[i..<min(next, text.endIndex)]
+                if fence == "```" {
+                    let langStart = next
+                    var lineEnd = langStart
+                    while lineEnd < text.endIndex, text[lineEnd] != "\n" { lineEnd = text.index(after: lineEnd) }
+                    let lang = langStart < lineEnd ? String(text[langStart..<lineEnd]).trimmingCharacters(in: .whitespaces) : nil
+                    let codeStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : lineEnd
+                    var search = codeStart
+                    var foundEnd: String.Index?
+                    while search < text.endIndex {
+                        if text[search] == "`" {
+                            let n = text.index(search, offsetBy: 3, limitedBy: text.endIndex) ?? text.endIndex
+                            if text[search..<min(n, text.endIndex)] == "```" { foundEnd = search; break }
+                        }
+                        search = text.index(after: search)
+                    }
+                    if let end = foundEnd {
+                        if !buffer.isEmpty { result.append((.text, buffer, nil)); buffer = "" }
+                        let code = String(text[codeStart..<end])
+                        result.append((.code, code, lang))
+                        i = min(text.index(end, offsetBy: 3), text.endIndex)
+                        continue
+                    }
+                }
+            }
+            buffer.append(text[i])
+            i = text.index(after: i)
+        }
+        if !buffer.isEmpty { result.append((.text, buffer, nil)) }
+        return result
+    }
+
+    private enum SegmentKind { case text, code }
+
+    private func tightenAttributedString(_ source: NSAttributedString) -> NSAttributedString {
+        let m = NSMutableAttributedString(attributedString: source)
+        m.enumerateAttributes(in: NSRange(location: 0, length: m.length), options: []) { attrs, range, _ in
+            if let ps = attrs[.paragraphStyle] as? NSParagraphStyle {
+                let newPS = ps.mutableCopy() as! NSMutableParagraphStyle
+                newPS.lineSpacing = max(0, min(ps.lineSpacing, 1))
+                newPS.paragraphSpacing = max(0, min(ps.paragraphSpacing, 2))
+                m.addAttribute(.paragraphStyle, value: newPS, range: range)
+            }
+        }
+        return m
+    }
+
+    private func scaleAttributedString(_ source: NSAttributedString, factor: CGFloat) -> NSAttributedString {
+        let m = NSMutableAttributedString(attributedString: source)
+        m.enumerateAttributes(in: NSRange(location: 0, length: m.length), options: []) { attrs, range, _ in
+            if let font = attrs[.font] as? UIFont {
+                let newFont = UIFont(descriptor: font.fontDescriptor, size: font.pointSize * factor)
+                m.addAttribute(.font, value: newFont, range: range)
+            }
+        }
+        return m
+    }
+
+    private func centerAttributedString(_ source: NSAttributedString) -> NSAttributedString {
+        let m = NSMutableAttributedString(attributedString: source)
+        m.addAttribute(.paragraphStyle, value: {
+            let ps = NSMutableParagraphStyle()
+            ps.alignment = .center
+            return ps
+        }(), range: NSRange(location: 0, length: m.length))
+        return m
+    }
+
+    private final class CodeBlockView: UIView {
+        private let textView = UITextView()
+        var text: String = "" { didSet { textView.text = text } }
+        var textColor: UIColor = .label { didSet { textView.textColor = textColor } }
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            layer.cornerRadius = 8
+            textView.isEditable = false
+            textView.isScrollEnabled = false
+            textView.backgroundColor = .clear
+            textView.font = UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+            textView.textContainerInset = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+            addSubview(textView)
+            textView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                textView.topAnchor.constraint(equalTo: topAnchor),
+                textView.leadingAnchor.constraint(equalTo: leadingAnchor),
+                textView.trailingAnchor.constraint(equalTo: trailingAnchor),
+                textView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            ])
+        }
+        required init?(coder: NSCoder) { super.init(coder: coder) }
     }
 }

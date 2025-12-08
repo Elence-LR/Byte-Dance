@@ -34,18 +34,19 @@ public final class InputBarView: UIView, UITextViewDelegate {
 
         textView.isScrollEnabled = false
         textView.delegate = self
-        textView.font = UIFont.preferredFont(forTextStyle: .body)
+        textView.font = UIFont.systemFont(ofSize: 18)
         textView.layer.cornerRadius = 8
         textView.layer.borderWidth = 1
         textView.layer.borderColor = UIColor.separator.cgColor
-        textView.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        textView.textContainerInset = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
 
         sendButton.setTitle(NSLocalizedString("Send", comment: ""), for: .normal)
+        sendButton.titleLabel?.font = UIFont.systemFont(ofSize: 18)
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
 
         let stack = UIStackView(arrangedSubviews: [imageButton, textView, sendButton])
         stack.axis = .horizontal
-        stack.spacing = 8
+        stack.spacing = 6
         stack.alignment = .fill
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
