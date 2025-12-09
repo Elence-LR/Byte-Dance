@@ -20,7 +20,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
 
     private lazy var modelOptions: [ModelOption] = [
         .init(title: "DeepSeek", config: AIModelConfig(provider: .openAIStyle, modelName: "deepseek-chat", apiKey: "sk-24696f0c8e1f490386d913ef1caba425")),
-        .init(title: "Qwen3-Max",   config: AIModelConfig(provider: .dashscope, modelName: "qwen3-max", apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
+        .init(title: "Qwen-Plus",   config: AIModelConfig(provider: .dashscope, modelName: "qwen-plus", thinking: true, apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
     ]
 
     private var currentModelIndex: Int = 0 {
@@ -53,10 +53,15 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         
         // 消息更新回调，用于刷新 UI
         viewModel.onNewMessage = { [weak self] _ in
-            self?.tableView.reloadData()
-            // 滚动到底部
-            if let count = self?.viewModel.messages().count, count > 0 {
-                self?.tableView.scrollToRow(at: IndexPath(row: count - 1, section: 0), at: .bottom, animated: true)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.tableView.reloadData()
+                let count = self.viewModel.messages().count
+                if count > 0 {
+                    self.tableView.scrollToRow(at: IndexPath(row: count - 1, section: 0),
+                                               at: .bottom,
+                                               animated: true)
+                }
             }
         }
     }
@@ -127,9 +132,26 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: MessageCell.reuseId, for: indexPath) as! MessageCell
         let message = viewModel.messages()[indexPath.row]
-        cell.configure(with: message)
+
+        cell.configure(with: message, isReasoningExpanded: viewModel.isReasoningExpanded(messageID: message.id))
+
+        cell.onToggleReasoning = { [weak self] messageID in
+            guard let self else { return }
+            self.viewModel.toggleReasoningExpanded(messageID: messageID)
+
+            //  局部刷新这一行（避免整表闪）
+            if let row = self.viewModel.messages().firstIndex(where: { $0.id == messageID }) {
+                self.tableView.performBatchUpdates {
+                    self.tableView.reloadRows(at: [IndexPath(row: row, section: 0)], with: .fade)
+                }
+            } else {
+                self.tableView.reloadData()
+            }
+        }
+
         return cell
     }
+
 }
 
 // 李相瑜新增：MARK: - 图片选择器回调
@@ -153,7 +175,7 @@ extension ChatViewController: PHPickerViewControllerDelegate {
     }
 }
 
-
+// MARK: 模型选择
 extension ChatViewController {
     
     private func setupModelSwitcher() {

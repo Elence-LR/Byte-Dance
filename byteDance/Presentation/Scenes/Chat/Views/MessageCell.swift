@@ -8,6 +8,16 @@ public final class MessageCell: UITableViewCell {
 
     private let bubbleView = UIView()
     private let contentStack = UIStackView()
+    
+    // Reasoning UI
+    private let reasoningContainer = UIView()
+    private let reasoningStack = UIStackView()
+    private let reasoningButton = UIButton(type: .system)
+    private let reasoningLabel = UILabel()
+
+    // 用于回调定位 message
+    private var currentMessageID: UUID?
+    public var onToggleReasoning: ((UUID) -> Void)?
 
     private var leftLeading: NSLayoutConstraint!
     private var leftTrailingMax: NSLayoutConstraint!   // <=
@@ -64,6 +74,45 @@ public final class MessageCell: UITableViewCell {
             contentStack.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
             contentStack.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -4),
         ])
+        
+        // ✅ Reasoning UI setup (insert into setup())
+        reasoningContainer.translatesAutoresizingMaskIntoConstraints = false
+        reasoningContainer.layer.cornerRadius = 10
+        reasoningContainer.layer.masksToBounds = true
+        reasoningContainer.backgroundColor = .tertiarySystemFill
+
+        reasoningStack.translatesAutoresizingMaskIntoConstraints = false
+        reasoningStack.axis = .vertical
+        reasoningStack.spacing = 6
+        reasoningContainer.addSubview(reasoningStack)
+
+        NSLayoutConstraint.activate([
+            reasoningStack.topAnchor.constraint(equalTo: reasoningContainer.topAnchor, constant: 8),
+            reasoningStack.leadingAnchor.constraint(equalTo: reasoningContainer.leadingAnchor, constant: 10),
+            reasoningStack.trailingAnchor.constraint(equalTo: reasoningContainer.trailingAnchor, constant: -10),
+            reasoningStack.bottomAnchor.constraint(equalTo: reasoningContainer.bottomAnchor, constant: -8),
+        ])
+
+        reasoningButton.contentHorizontalAlignment = .leading
+        reasoningButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        reasoningButton.setTitleColor(.secondaryLabel, for: .normal)
+        reasoningButton.setTitle("思考过程", for: .normal)
+        reasoningButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
+        reasoningButton.semanticContentAttribute = .forceRightToLeft
+        reasoningButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: 6, bottom: 0, right: -6)
+        reasoningButton.addTarget(self, action: #selector(didTapReasoning), for: .touchUpInside)
+
+        reasoningLabel.numberOfLines = 0
+        reasoningLabel.font = .systemFont(ofSize: 13)
+        reasoningLabel.textColor = .secondaryLabel
+
+        reasoningStack.addArrangedSubview(reasoningButton)
+        reasoningStack.addArrangedSubview(reasoningLabel)
+
+        // 默认隐藏（无 reasoning 时不显示；收起时隐藏正文）
+        reasoningContainer.isHidden = true
+        reasoningLabel.isHidden = true
+
 
         leftLeading.isActive = true
         leftTrailingMax.isActive = true
@@ -78,6 +127,12 @@ public final class MessageCell: UITableViewCell {
         super.prepareForReuse()
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         
+        currentMessageID = nil
+        onToggleReasoning = nil
+        reasoningContainer.isHidden = true
+        reasoningLabel.isHidden = true
+        reasoningLabel.text = nil
+        
         leftLeading.isActive = true
         leftTrailingMax.isActive = true
 
@@ -85,13 +140,39 @@ public final class MessageCell: UITableViewCell {
         rightLeadingMin.isActive = false
         centerConstraint.isActive = false
 
-
         bubbleView.backgroundColor = .secondarySystemBackground
         
     }
+    
+    @objc private func didTapReasoning() {
+        guard let id = currentMessageID else { return }
+        onToggleReasoning?(id)
+    }
 
-    public func configure(with message: Message) {
+
+    public func configure(with message: Message, isReasoningExpanded: Bool) {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        
+        currentMessageID = message.id
+
+        if message.role == .assistant,
+           let reasoning = message.reasoning,
+           !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+
+            reasoningContainer.isHidden = false
+            reasoningLabel.text = reasoning
+            reasoningLabel.isHidden = !isReasoningExpanded
+
+            let imgName = isReasoningExpanded ? "chevron.up" : "chevron.down"
+            reasoningButton.setImage(UIImage(systemName: imgName), for: .normal)
+
+            // 放在气泡内容最上面
+            contentStack.addArrangedSubview(reasoningContainer)
+        } else {
+            reasoningContainer.isHidden = true
+            reasoningLabel.isHidden = true
+        }
+        
         let segments = parseSegments(from: message.content)
         #if canImport(Down)
         for seg in segments {
@@ -134,6 +215,9 @@ public final class MessageCell: UITableViewCell {
         label.text = message.content
         contentStack.addArrangedSubview(label)
         #endif
+        
+        // 先全部关掉（用 deactivate 避免瞬间同时 active）
+        NSLayoutConstraint.deactivate([leftLeading, leftTrailingMax, rightTrailing, rightLeadingMin, centerConstraint])
 
         switch message.role {
         case .user:
@@ -149,6 +233,7 @@ public final class MessageCell: UITableViewCell {
             rightTrailing.isActive = true
             rightLeadingMin.isActive = true
 
+            NSLayoutConstraint.activate([rightTrailing, rightLeadingMin])
 
             bubbleView.backgroundColor = .systemBlue
             contentStack.arrangedSubviews.forEach { v in
@@ -190,7 +275,8 @@ public final class MessageCell: UITableViewCell {
             // 左侧开启：leading == 16 + trailing <= -64
             leftLeading.isActive = true
             leftTrailingMax.isActive = true
-
+            
+            NSLayoutConstraint.activate([leftLeading, leftTrailingMax])
 
             bubbleView.backgroundColor = .secondarySystemBackground
             contentStack.arrangedSubviews.forEach { v in
@@ -209,6 +295,9 @@ public final class MessageCell: UITableViewCell {
                     lv.backgroundColor = .clear
                 }
             }
+            
+            reasoningContainer.backgroundColor = UIColor.tertiarySystemFill
+            reasoningLabel.textColor = .secondaryLabel
 
         case .system:
             // 居中提示（比如“已清空对话/模型切换”）
@@ -217,7 +306,8 @@ public final class MessageCell: UITableViewCell {
             rightTrailing.isActive = false
             rightLeadingMin.isActive = false
             centerConstraint.isActive = true
-
+            
+            NSLayoutConstraint.activate([centerConstraint])
 
             bubbleView.backgroundColor = .tertiarySystemFill
             contentStack.arrangedSubviews.forEach { v in

@@ -39,4 +39,10 @@ public final class ChatRepository: ChatRepositoryProtocol {
         guard let mIndex = sessions[sIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
         sessions[sIndex].messages[mIndex].content = content
     }
+    
+    public func updateMessageReasoning(sessionID: UUID, messageID: UUID, reasoning: String) {
+        guard let sIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        guard let mIndex = sessions[sIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
+        sessions[sIndex].messages[mIndex].reasoning = reasoning
+    }
 }

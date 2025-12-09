@@ -14,6 +14,7 @@ public final class ChatViewModel {
     private let sendUseCase: SendMessageUseCase
     private let repository: ChatRepositoryProtocol
     public var onNewMessage: ((Message) -> Void)?
+    private var reasoningExpanded: [UUID: Bool] = [:]
 
     public init(session: Session, sendUseCase: SendMessageUseCase, repository: ChatRepositoryProtocol) {
         self.session = session
@@ -24,7 +25,7 @@ public final class ChatViewModel {
     public func send(text: String, config: AIModelConfig) {
         // 仅在本地记录消息，不真正发送
         Task {
-            let userMessage = Message(role: .user, content: text)
+            let userMessage = Message(role: .user, content: text, reasoning: nil)
             repository.appendMessage(sessionID: session.id, message: userMessage)
             onNewMessage?(userMessage)
             
@@ -71,23 +72,35 @@ public final class ChatViewModel {
         // 3) 插入 assistant 占位消息到 repo
         let assistantID = UUID()
         repository.appendMessage(sessionID: session.id,
-                                 message: Message(id: assistantID, role: .assistant, content: ""))
+                                 message: Message(id: assistantID, role: .assistant, content: "", reasoning: nil))
         if let appended = repository.fetchMessages(sessionID: session.id).last {
             onNewMessage?(appended)
         }
         // 4) 逐 token 合并到占位消息，并更新 repo
         Task {
-            var buffer = ""
+            var contnetBuffer = ""
+            var reasoningBuffer = ""
             for await m in s { // m.content 是 token
-                buffer += m.content
-                repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: buffer)
-                
-                // 触发 UI 刷新（把更新后的 message 发给 VC）
-                if let updated = repository.fetchMessages(sessionID: session.id)
-                    .first(where: { $0.id == assistantID }) {
-                    onNewMessage?(updated)
-                } else {
-                    onNewMessage?(m)
+                if let r = m.reasoning {
+                    print(r)
+                    reasoningBuffer += r
+                    repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
+
+                    if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
+                        onNewMessage?(updated)
+                    }
+                }
+                else {
+                    contnetBuffer += m.content
+                    repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contnetBuffer)
+                    
+                    // 触发 UI 刷新（把更新后的 message 发给 VC）
+                    if let updated = repository.fetchMessages(sessionID: session.id)
+                        .first(where: { $0.id == assistantID }) {
+                        onNewMessage?(updated)
+                    } else {
+                        onNewMessage?(m)
+                    }
                 }
             }
         }
@@ -105,5 +118,14 @@ public final class ChatViewModel {
         repository.appendMessage(sessionID: session.id, message: tip)
         onNewMessage?(tip)
     }
+    
+    
+    public func isReasoningExpanded(messageID: UUID) -> Bool {
+        reasoningExpanded[messageID] ?? false
+    }
 
+    
+    public func toggleReasoningExpanded(messageID: UUID) {
+        reasoningExpanded[messageID] = !(reasoningExpanded[messageID] ?? false)
+    }
 }

@@ -30,6 +30,10 @@ struct DashScopeSSEParser {
               let data = payload.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return .ignore }
+        
+        // 打印完整信息，便于debug
+        print("RAW:", payload.prefix(300))
+
 
         // data: {"output":{"choices":[{"message":{"content":"xxx","reasoning_content":"...","role":"assistant"}}]}}
         if let output = json["output"] as? [String: Any],

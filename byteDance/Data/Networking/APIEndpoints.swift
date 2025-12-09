@@ -31,7 +31,7 @@ public enum APIEndpoints {
             "Content-Type": "application/json",
         ]
         if streaming {
-            h["Accept"] = "text/event-stream"
+//          h["Accept"] = "text/event-stream"
             h["X-DashScope-SSE"] = "enable" // DashScope 开启 SSE
         }
         return h

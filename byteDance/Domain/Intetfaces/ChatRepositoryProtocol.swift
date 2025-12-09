@@ -14,4 +14,5 @@ public protocol ChatRepositoryProtocol {
     func appendMessage(sessionID: UUID, message: Message)
     func fetchMessages(sessionID: UUID) -> [Message]
     func updateMessageContent(sessionID: UUID, messageID: UUID, content: String)
+    func updateMessageReasoning(sessionID: UUID, messageID: UUID, reasoning: String)
 }

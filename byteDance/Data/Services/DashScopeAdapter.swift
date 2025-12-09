@@ -26,7 +26,7 @@ public final class DashScopeAdapter: LLMServiceProtocol {
 
         // 非流式响应结构也在 output.choices[0].message.content
         let text = extractDashScopeFinalContent(from: data) ?? ""
-        return Message(role: .assistant, content: text)
+        return Message(role: .assistant, content: text, reasoning: nil)
     }
 
     public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
@@ -44,7 +44,7 @@ public final class DashScopeAdapter: LLMServiceProtocol {
                         continuation.yield(Message(role: .assistant, content: token))
                     case .reasoning(let r):
                         // 你可以选择把思考过程也展示出来，比如用特殊前缀/单独气泡
-                        continuation.yield(Message(role: .assistant, content: r))
+                        continuation.yield(Message(role: .assistant, content: "", reasoning: r))
                     case .done:
                         continuation.finish()
                         return
@@ -70,11 +70,12 @@ public final class DashScopeAdapter: LLMServiceProtocol {
                 "result_format": "message",
                 "incremental_output": incremental,
                 // 常用参数（按需）：temperature / max_tokens
+                "enable_thinking": config.thinking,
                 "temperature": config.temperature,
                 "max_tokens": config.tokenLimit
             ]
         ]
-
+        print("❗️Body: \(payload)")
         return try? JSONSerialization.data(withJSONObject: payload)
     }
 
