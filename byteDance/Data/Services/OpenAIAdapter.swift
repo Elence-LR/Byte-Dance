@@ -20,15 +20,7 @@ public final class OpenAIAdapter: LLMServiceProtocol {
     public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
         let url = APIEndpoints.openAIStyleStreamURL()
         let headers = APIEndpoints.openAIStyleHeaders(apiKey: config.apiKey ?? "")
-//        print(url, headers)
-
-        let bodyMessages = messages.map { ["role": $0.role.rawValue, "content": $0.content] }
-        let payload: [String: Any] = [
-            "model": config.modelName,
-            "messages": bodyMessages,
-            "stream": true
-        ]
-        let body = try? JSONSerialization.data(withJSONObject: payload)
+        let body = makeBody(messages: messages, config: config)
 
         let lines = sse.stream(url: url, headers: headers, body: body)
 
@@ -38,6 +30,8 @@ public final class OpenAIAdapter: LLMServiceProtocol {
                     switch OpenAIStyleSSEParser.parse(line: line) {
                     case .token(let token):
                         continuation.yield(Message(role: .assistant, content: token))
+                    case .reasoning(let r):
+                        continuation.yield(Message(role: .assistant, content: "", reasoning: r))
                     case .done:
                         continuation.finish()
                         return
@@ -52,16 +46,20 @@ public final class OpenAIAdapter: LLMServiceProtocol {
 
     
     
-    private func makeBody(session: Session, config: AIModelConfig) -> Data {
-        let messagesArr = session.messages.map { msg in
-            ["role": msg.role.rawValue, "content": msg.content]
-        }
-        let payload: [String: Any] = [
+    private func makeBody(messages: [Message], config: AIModelConfig) -> Data? {
+        let messagesArr = messages.map { ["role": $0.role.rawValue, "content": $0.content] }
+
+        var payload: [String: Any] = [
             "model": config.modelName,
             "messages": messagesArr,
             "stream": true
         ]
-        return try! JSONSerialization.data(withJSONObject: payload)
+
+        
+        payload["thinking"] = ["type": config.thinking ? "enabled" : "disabled"]
+        
+
+        return try? JSONSerialization.data(withJSONObject: payload)
     }
 
 

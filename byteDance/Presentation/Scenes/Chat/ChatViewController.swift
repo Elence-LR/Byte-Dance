@@ -19,7 +19,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         }
 
     private lazy var modelOptions: [ModelOption] = [
-        .init(title: "DeepSeek", config: AIModelConfig(provider: .openAIStyle, modelName: "deepseek-chat", apiKey: "sk-24696f0c8e1f490386d913ef1caba425")),
+        .init(title: "DeepSeek", config: AIModelConfig(provider: .openAIStyle, modelName: "deepseek-chat", thinking: true, apiKey: "sk-24696f0c8e1f490386d913ef1caba425")),
         .init(title: "Qwen-Plus",   config: AIModelConfig(provider: .dashscope, modelName: "qwen-plus", thinking: true, apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
     ]
 

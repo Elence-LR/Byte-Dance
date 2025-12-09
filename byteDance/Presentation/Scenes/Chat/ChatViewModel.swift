@@ -66,7 +66,7 @@ public final class ChatViewModel {
         if let last = repository.fetchMessages(sessionID: session.id).last {
             onNewMessage?(last) // 只是为了让 VC reload
         } else {
-            onNewMessage?(Message(role: .system, content: "")) // 理论不会走到；你不喜欢就删掉
+            onNewMessage?(Message(role: .system, content: "")) // 理论不会走到；
         }
 
         // 3) 插入 assistant 占位消息到 repo

@@ -9,6 +9,7 @@ import Foundation
 
 enum OpenAIStyleSSEEvent {
     case token(String)
+    case reasoning(String)
     case done
     case ignore
 }
@@ -25,6 +26,7 @@ struct OpenAIStyleSSEParser {
         } else {
             payload = trimmed
         }
+        print("✅ Raw: \(payload)")
 
         if payload == "[DONE]" { return .done }
         guard payload.hasPrefix("{") else { return .ignore }
@@ -42,6 +44,12 @@ struct OpenAIStyleSSEParser {
            let content = delta["content"] as? String,
            !content.isEmpty {
             return .token(content)
+        }
+        
+        if let delta = first["delta"] as? [String: Any],
+           let reasoning = delta["reasoning_content"] as? String,
+           !reasoning.isEmpty {
+            return .reasoning(reasoning)
         }
 
         // 有的实现可能把 content 放在 message 里（非严格流式），这里做个兜底

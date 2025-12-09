@@ -24,6 +24,7 @@ public final class SendMessageUseCase {
     }
 
     public func stream(session: Session, userText: String, config: AIModelConfig) -> AsyncStream<Message> {
+        // 目前发送出去的内容只包含content，不会包含reasoning
         let userMessage = Message(role: .user, content: userText)
         repository.appendMessage(sessionID: session.id, message: userMessage)
         return service.streamMessage(sessionID: session.id, messages: repository.fetchMessages(sessionID: session.id), config: config)
