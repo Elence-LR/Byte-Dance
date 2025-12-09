@@ -11,6 +11,10 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     private let tableView = UITableView()
     private let inputBar = InputBarView()
     private let viewModel: ChatViewModel
+    private let thinkingButton = UIButton(type: .system)
+    private var thinkingEnabled: Bool = false {
+        didSet { updateThinkingButtonUI() }
+    }
 
     // 模型选择
     private struct ModelOption {
@@ -49,6 +53,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         title = viewModel.session.title
         setupTable()
         setupInput()
+        setupThinkingToggle()
         setupModelSwitcher()
         
         // 消息更新回调，用于刷新 UI
@@ -109,9 +114,11 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         // 文本发送按钮逻辑：调用 ViewModel 发送消息
         inputBar.onSend = { [weak self] text in
             guard let self else { return }
-            self.viewModel.stream(text: text, config: self.currentConfig)
+            var cfg = self.currentConfig
+            cfg.thinking = self.thinkingEnabled
+            self.viewModel.stream(text: text, config: cfg)
         }
-        
+
         //李相瑜新增：图片按钮点击 -> 弹 picker
         inputBar.onImageButtonTapped = { [weak self] in
             guard let self = self else { return }
@@ -220,6 +227,60 @@ extension ChatViewController {
         currentModelIndex = index
         Task { @MainActor in
             viewModel.addSystemTip("已切换到：\(modelOptions[index].title)")
+        }
+    }
+
+}
+
+
+// MARK: 切换思考模式
+extension ChatViewController {
+    
+    private func setupThinkingToggle() {
+        thinkingButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(thinkingButton)
+
+        // 样式：小胶囊
+        var cfg = UIButton.Configuration.filled()
+        cfg.cornerStyle = .capsule
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
+        cfg.imagePadding = 6
+        thinkingButton.configuration = cfg
+        thinkingButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        thinkingButton.addTarget(self, action: #selector(didTapThinkingToggle), for: .touchUpInside)
+
+        // 初始值：可以默认跟当前模型的 config.thinking 对齐
+        thinkingEnabled = currentConfig.thinking
+
+        NSLayoutConstraint.activate([
+            // 放在 inputBar 上方，左下角位置（你也可以放右侧）
+            thinkingButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            thinkingButton.bottomAnchor.constraint(equalTo: inputBar.topAnchor, constant: -8),
+            thinkingButton.heightAnchor.constraint(equalToConstant: 28)
+        ])
+    }
+
+    @objc private func didTapThinkingToggle() {
+        thinkingEnabled.toggle()
+
+        // 你也可以提示一下（你工程里已有 system tip）
+        Task { @MainActor in
+            viewModel.addSystemTip(thinkingEnabled ? "已开启思考模式" : "已关闭思考模式")
+        }
+    }
+
+    private func updateThinkingButtonUI() {
+        // 这里用“brain”图标 + 文案，开关态一眼能看出
+        let title = thinkingEnabled ? "思考：开" : "思考：关"
+        let imageName = thinkingEnabled ? "brain.head.profile" : "brain"
+        thinkingButton.setTitle(title, for: .normal)
+        thinkingButton.setImage(UIImage(systemName: imageName), for: .normal)
+
+        // 轻微区分一下状态（不想改颜色也行）
+        if #available(iOS 15.0, *) {
+            thinkingButton.configuration?.baseBackgroundColor = thinkingEnabled ? .systemGreen : .tertiarySystemFill
+            thinkingButton.configuration?.baseForegroundColor = thinkingEnabled ? .white : .label
         }
     }
 
