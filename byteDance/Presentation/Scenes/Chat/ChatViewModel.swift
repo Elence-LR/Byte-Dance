@@ -57,54 +57,73 @@ public final class ChatViewModel {
         }
     }
     
+    // MARK: 图片
+    // 由于没有服务器，所以我们上传图片选择Base64编码方式上传
+    public func sendImage(_ image: UIImage, prompt: String = "图中描绘的是什么景象？", config: AIModelConfig) {
+        Task {
+            guard let data = ImageProcessor.jpegData(from: image, maxKB: 300) else {
+                await MainActor.run { self.addSystemTip("图片压缩失败") }
+                return
+            }
+            let base64 = data.base64EncodedString()
+            let dataURL = "data:image/jpeg;base64,\(base64)"
 
-    public func stream(text: String, config: AIModelConfig) {
-        // 1) 先启动 usecase 的 stream（它会 append user message 到 repo）
-        let s = sendUseCase.stream(session: session, userText: text, config: config)
+            let userMsg = Message(
+                role: .user,
+                content: prompt,
+                attachments: [.init(kind: .imageDataURL, value: dataURL)]
+            )
+            self.stream(userMessage: userMsg, config: config)
+        }
+    }
+    
+    // MARK: - 统一入口（文本/图片都走这里）
+    private func stream(userMessage: Message, config: AIModelConfig) {
+        // 1) 启动 usecase stream（它会 append user message 到 repo）
+        let s = sendUseCase.stream(session: session, userMessage: userMessage, config: config)
 
         // 2) 触发一次刷新，让 UI 看到 user message
         if let last = repository.fetchMessages(sessionID: session.id).last {
-            onNewMessage?(last) // 只是为了让 VC reload
+            onNewMessage?(last)
         } else {
-            onNewMessage?(Message(role: .system, content: "")) // 理论不会走到；
+            onNewMessage?(Message(role: .system, content: ""))
         }
 
-        // 3) 插入 assistant 占位消息到 repo
+        // 3) 插入 assistant 占位消息
         let assistantID = UUID()
         repository.appendMessage(sessionID: session.id,
                                  message: Message(id: assistantID, role: .assistant, content: "", reasoning: nil))
         if let appended = repository.fetchMessages(sessionID: session.id).last {
             onNewMessage?(appended)
         }
-        // 4) 逐 token 合并到占位消息，并更新 repo
+
+        // 4) 逐 token 合并
         Task {
-            var contnetBuffer = ""
+            var contentBuffer = ""
             var reasoningBuffer = ""
-            for await m in s { // m.content 是 token
+            for await m in s {
                 if let r = m.reasoning {
-                    print(r)
                     reasoningBuffer += r
                     repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
-
-                    if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
-                        onNewMessage?(updated)
-                    }
+                } else {
+                    contentBuffer += m.content
+                    repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
                 }
-                else {
-                    contnetBuffer += m.content
-                    repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contnetBuffer)
-                    
-                    // 触发 UI 刷新（把更新后的 message 发给 VC）
-                    if let updated = repository.fetchMessages(sessionID: session.id)
-                        .first(where: { $0.id == assistantID }) {
-                        onNewMessage?(updated)
-                    } else {
-                        onNewMessage?(m)
-                    }
+
+                if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
+                    onNewMessage?(updated)
+                } else {
+                    onNewMessage?(m)
                 }
             }
         }
     }
+
+    // MARK: - 文本：保持现有行为
+    public func stream(text: String, config: AIModelConfig) {
+        stream(userMessage: Message(role: .user, content: text), config: config)
+    }
+    
 
     
     public func messages() -> [Message] {

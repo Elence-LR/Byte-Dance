@@ -30,7 +30,9 @@ public final class DashScopeAdapter: LLMServiceProtocol {
     }
 
     public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
-        let url = APIEndpoints.dashScopeStreamURL()
+        let useIM = needsMultimodal(messages)
+        let url = useIM ? APIEndpoints.dashScopeMultimodalURL() : APIEndpoints.dashScopeTextURL()
+        
         let headers = APIEndpoints.dashScopeHeaders(apiKey: config.apiKey ?? "", streaming: true)
         let body = makeDashScopeBody(messages: messages, config: config, incremental: true)
 
@@ -59,7 +61,7 @@ public final class DashScopeAdapter: LLMServiceProtocol {
 
     // MARK: - Body
     private func makeDashScopeBody(messages: [Message], config: AIModelConfig, incremental: Bool) -> Data? {
-        let bodyMessages = messages.map { ["role": $0.role.rawValue, "content": $0.content] }
+        let bodyMessages = messages.map(mapToDashScopeMessage)
 
         let payload: [String: Any] = [
             "model": config.modelName,
@@ -91,4 +93,30 @@ public final class DashScopeAdapter: LLMServiceProtocol {
 
         return content
     }
+    
+    private func needsMultimodal(_ messages: [Message]) -> Bool {
+        return messages.contains { ($0.attachments?.isEmpty == false) }
+    }
+    
+    private func mapToDashScopeMessage(_ m: Message) -> [String: Any] {
+        var obj: [String: Any] = ["role": m.role.rawValue]
+
+        if m.role == .user, let atts = m.attachments, !atts.isEmpty {
+            var parts: [[String: Any]] = []
+            for a in atts {
+                // 目前只做 imageDataURL
+                parts.append(["image": a.value])
+            }
+            if !m.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                parts.append(["text": m.content])
+            }
+            obj["content"] = parts
+        } else {
+            // 非多模态消息保持你现在的方式：纯 string
+            obj["content"] = m.content
+        }
+
+        return obj
+    }
+
 }

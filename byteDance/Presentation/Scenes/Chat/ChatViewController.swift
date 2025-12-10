@@ -25,6 +25,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     private lazy var modelOptions: [ModelOption] = [
         .init(title: "DeepSeek", config: AIModelConfig(provider: .openAIStyle, modelName: "deepseek-chat", thinking: true, apiKey: "sk-24696f0c8e1f490386d913ef1caba425")),
         .init(title: "Qwen-Plus",   config: AIModelConfig(provider: .dashscope, modelName: "qwen-plus", thinking: true, apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
+        .init(title: "Qwen3-VL-Plus",   config: AIModelConfig(provider: .dashscope, modelName: "qwen3-vl-plus", thinking: false, apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
     ]
 
     private var currentModelIndex: Int = 0 {
@@ -175,7 +176,15 @@ extension ChatViewController: PHPickerViewControllerDelegate {
             guard let self = self else { return }
             if let image = object as? UIImage {
                 DispatchQueue.main.async {
-                    self.viewModel.sendImage(image)
+//                    self.viewModel.sendImage(image)
+                    let cfg = self.currentConfig
+//                    cfg.thinking = self.thinkingEnabled
+
+                    // 目前只有qwen3-vl-plus支持图像输入
+                    // 可以在做拦截提示：如果当前是 DeepSeek，就提示“该模型不支持图片”
+                    // prompt应该从用户输入框拿
+                    self.viewModel.sendImage(image, prompt: "图中描绘的是什么景象？", config: cfg)
+
                 }
             }
         }

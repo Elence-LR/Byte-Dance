@@ -15,6 +15,16 @@ public enum APIEndpoints {
         let host = "https://dashscope.aliyuncs.com"
         return URL(string: "\(host)/api/v1/services/aigc/text-generation/generation")!
     }
+    
+    public static func dashScopeTextURL() -> URL {
+        let host = "https://dashscope.aliyuncs.com"
+        return URL(string: "\(host)/api/v1/services/aigc/text-generation/generation")!
+    }
+
+    public static func dashScopeMultimodalURL() -> URL {
+        let host = "https://dashscope.aliyuncs.com"
+        return URL(string: "\(host)/api/v1/services/aigc/multimodal-generation/generation")!
+    }
 
     // MARK: - Headers
     public static func openAIStyleHeaders(apiKey: String) -> [String: String] {
