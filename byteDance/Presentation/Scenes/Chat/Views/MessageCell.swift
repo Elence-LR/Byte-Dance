@@ -8,7 +8,7 @@ public final class MessageCell: UITableViewCell {
 
     private let bubbleView = UIView()
     private let contentStack = UIStackView()
-    
+
     // Reasoning UI
     private let reasoningContainer = UIView()
     private let reasoningStack = UIStackView()
@@ -20,11 +20,10 @@ public final class MessageCell: UITableViewCell {
     public var onToggleReasoning: ((UUID) -> Void)?
 
     private var leftLeading: NSLayoutConstraint!
-    private var leftTrailingMax: NSLayoutConstraint!   // <=
+    private var leftTrailingMax: NSLayoutConstraint!
     private var rightTrailing: NSLayoutConstraint!
-    private var rightLeadingMin: NSLayoutConstraint!   // >=
+    private var rightLeadingMin: NSLayoutConstraint!
     private var centerConstraint: NSLayoutConstraint!
-
 
     private let maxBubbleWidthRatio: CGFloat = 0.78
 
@@ -61,12 +60,9 @@ public final class MessageCell: UITableViewCell {
 
         centerConstraint = bubbleView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor)
 
-
         NSLayoutConstraint.activate([
             bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-
-            // 最大宽度，避免整行铺满
             bubbleView.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: maxBubbleWidthRatio),
 
             contentStack.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 4),
@@ -74,8 +70,8 @@ public final class MessageCell: UITableViewCell {
             contentStack.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
             contentStack.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -4),
         ])
-        
-        // ✅ Reasoning UI setup (insert into setup())
+
+        // ✅ Reasoning UI
         reasoningContainer.translatesAutoresizingMaskIntoConstraints = false
         reasoningContainer.layer.cornerRadius = 10
         reasoningContainer.layer.masksToBounds = true
@@ -109,70 +105,60 @@ public final class MessageCell: UITableViewCell {
         reasoningStack.addArrangedSubview(reasoningButton)
         reasoningStack.addArrangedSubview(reasoningLabel)
 
-        // 默认隐藏（无 reasoning 时不显示；收起时隐藏正文）
         reasoningContainer.isHidden = true
         reasoningLabel.isHidden = true
 
-
         leftLeading.isActive = true
         leftTrailingMax.isActive = true
-
         rightTrailing.isActive = false
         rightLeadingMin.isActive = false
         centerConstraint.isActive = false
-
     }
 
     public override func prepareForReuse() {
         super.prepareForReuse()
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        
+
         currentMessageID = nil
         onToggleReasoning = nil
         reasoningContainer.isHidden = true
         reasoningLabel.isHidden = true
         reasoningLabel.text = nil
-        
+
         leftLeading.isActive = true
         leftTrailingMax.isActive = true
-
         rightTrailing.isActive = false
         rightLeadingMin.isActive = false
         centerConstraint.isActive = false
 
         bubbleView.backgroundColor = .secondarySystemBackground
-        
     }
-    
+
     @objc private func didTapReasoning() {
         guard let id = currentMessageID else { return }
         onToggleReasoning?(id)
     }
 
-
     public func configure(with message: Message, isReasoningExpanded: Bool) {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        
         currentMessageID = message.id
 
+        // Reasoning
         if message.role == .assistant,
            let reasoning = message.reasoning,
            !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-
             reasoningContainer.isHidden = false
             reasoningLabel.text = reasoning
             reasoningLabel.isHidden = !isReasoningExpanded
-
             let imgName = isReasoningExpanded ? "chevron.up" : "chevron.down"
             reasoningButton.setImage(UIImage(systemName: imgName), for: .normal)
-
-            // 放在气泡内容最上面
             contentStack.addArrangedSubview(reasoningContainer)
         } else {
             reasoningContainer.isHidden = true
             reasoningLabel.isHidden = true
         }
-        
+
+        // Text segments
         let segments = parseSegments(from: message.content)
         #if canImport(Down)
         for seg in segments {
@@ -215,304 +201,133 @@ public final class MessageCell: UITableViewCell {
         label.text = message.content
         contentStack.addArrangedSubview(label)
         #endif
-        
-        // 先全部关掉（用 deactivate 避免瞬间同时 active）
+
+        // Attachments (图片)
+        if let attachments = message.attachments {
+            for att in attachments {
+                if att.kind == .imageDataURL {
+                    let imageView = UIImageView()
+                    imageView.contentMode = .scaleAspectFit
+                    imageView.clipsToBounds = true
+                    imageView.layer.cornerRadius = 8
+                    if att.value.hasPrefix("data:image") {
+                        // Base64
+                        if let data = Data(base64Encoded: att.value.components(separatedBy: ",").last ?? ""),
+                           let img = UIImage(data: data) {
+                            imageView.image = img
+                        }
+                    } else if let url = URL(string: att.value) {
+                        // 网络 URL
+                        // 可以使用 SDWebImage / URLSession
+                        URLSession.shared.dataTask(with: url) { data, _, _ in
+                            if let d = data, let img = UIImage(data: d) {
+                                DispatchQueue.main.async { imageView.image = img }
+                            }
+                        }.resume()
+                    }
+                    contentStack.addArrangedSubview(imageView)
+                }
+            }
+        }
+
+        // Layout constraints
         NSLayoutConstraint.deactivate([leftLeading, leftTrailingMax, rightTrailing, rightLeadingMin, centerConstraint])
 
         switch message.role {
         case .user:
-            // 右侧气泡
-            // 先全部关掉，防止复用短暂同时 active
             leftLeading.isActive = false
             leftTrailingMax.isActive = false
-            rightTrailing.isActive = false
-            rightLeadingMin.isActive = false
-            centerConstraint.isActive = false
-
-            // 右侧开启：trailing == -16 + leading >= 64
             rightTrailing.isActive = true
             rightLeadingMin.isActive = true
-
-            NSLayoutConstraint.activate([rightTrailing, rightLeadingMin])
-
             bubbleView.backgroundColor = .systemBlue
-            contentStack.arrangedSubviews.forEach { v in
-                if let l = v as? UILabel {
-                    l.textColor = .white
-                    if let a = l.attributedText {
-                        let scaled = scaleAttributedString(a, factor: 1.15)
-                        let centered = centerAttributedString(scaled)
-                        let m = NSMutableAttributedString(attributedString: centered)
-                        m.addAttribute(.foregroundColor, value: UIColor.white, range: NSRange(location: 0, length: m.length))
-                        l.attributedText = m
-                        l.textAlignment = .center
-                    } else {
-                        l.font = .systemFont(ofSize: 20)
-                        l.textAlignment = .center
-                    }
-                } else if let cb = v as? CodeBlockView {
-                    cb.textColor = .white
-                    cb.backgroundColor = UIColor.white.withAlphaComponent(0.15)
-                } else if let hr = v as? HorizontalRuleView {
-                    hr.backgroundColor = UIColor.white.withAlphaComponent(0.6)
-                } else if let tv = v as? MarkdownTableView {
-                    tv.textColor = .white
-                    tv.backgroundColor = UIColor.white.withAlphaComponent(0.15)
-                } else if let lv = v as? MarkdownListView {
-                    lv.textColor = .white
-                    lv.backgroundColor = .clear
-                }
-            }
+            applyTextColor(.white)
 
         case .assistant:
-            // 左侧气泡
-            leftLeading.isActive = false
-            leftTrailingMax.isActive = false
-            rightTrailing.isActive = false
-            rightLeadingMin.isActive = false
-            centerConstraint.isActive = false
-
-            // 左侧开启：leading == 16 + trailing <= -64
             leftLeading.isActive = true
             leftTrailingMax.isActive = true
-            
-            NSLayoutConstraint.activate([leftLeading, leftTrailingMax])
-
             bubbleView.backgroundColor = .secondarySystemBackground
-            contentStack.arrangedSubviews.forEach { v in
-                if let l = v as? UILabel {
-                    l.textColor = .label
-                } else if let cb = v as? CodeBlockView {
-                    cb.textColor = .label
-                    cb.backgroundColor = UIColor.tertiarySystemFill
-                } else if let hr = v as? HorizontalRuleView {
-                    hr.backgroundColor = .separator
-                } else if let tv = v as? MarkdownTableView {
-                    tv.textColor = .label
-                    tv.backgroundColor = UIColor.tertiarySystemFill
-                } else if let lv = v as? MarkdownListView {
-                    lv.textColor = .label
-                    lv.backgroundColor = .clear
-                }
-            }
-            
+            applyTextColor(.label)
             reasoningContainer.backgroundColor = UIColor.tertiarySystemFill
             reasoningLabel.textColor = .secondaryLabel
 
         case .system:
-            // 居中提示（比如“已清空对话/模型切换”）
-            leftLeading.isActive = false
-            leftTrailingMax.isActive = false
-            rightTrailing.isActive = false
-            rightLeadingMin.isActive = false
             centerConstraint.isActive = true
-            
-            NSLayoutConstraint.activate([centerConstraint])
-
             bubbleView.backgroundColor = .tertiarySystemFill
-            contentStack.arrangedSubviews.forEach { v in
-                if let l = v as? UILabel {
-                    l.textColor = .secondaryLabel
-                    l.textAlignment = .center
-                } else if let cb = v as? CodeBlockView {
-                    cb.textColor = .secondaryLabel
-                    cb.backgroundColor = UIColor.tertiarySystemFill
-                } else if let hr = v as? HorizontalRuleView {
-                    hr.backgroundColor = .separator
-                } else if let tv = v as? MarkdownTableView {
-                    tv.textColor = .secondaryLabel
-                    tv.backgroundColor = UIColor.tertiarySystemFill
-                } else if let lv = v as? MarkdownListView {
-                    lv.textColor = .secondaryLabel
-                    lv.backgroundColor = .clear
-                }
+            applyTextColor(.secondaryLabel)
+        }
+    }
+
+    private func applyTextColor(_ color: UIColor) {
+        for v in contentStack.arrangedSubviews {
+            if let l = v as? UILabel {
+                l.textColor = color
+            } else if let cb = v as? CodeBlockView {
+                cb.textColor = color
+            } else if let hr = v as? HorizontalRuleView {
+                hr.backgroundColor = color.withAlphaComponent(0.6)
+            } else if let tv = v as? MarkdownTableView {
+                tv.textColor = color
+            } else if let lv = v as? MarkdownListView {
+                lv.textColor = color
             }
         }
     }
 
+    // MARK: - Segment parsing
     private func parseSegments(from text: String) -> [(kind: SegmentKind, content: String, lang: String?)] {
-        var result: [(SegmentKind, String, String?)] = []
-        var i = text.startIndex
+        // 简单示例实现，可根据原代码增强
+        var segments: [(SegmentKind, String, String?)] = []
+        let lines = text.components(separatedBy: "\n")
         var buffer = ""
-        while i < text.endIndex {
-            if text[i] == "`" {
-                let next = text.index(i, offsetBy: 3, limitedBy: text.endIndex) ?? text.endIndex
-                let fence = text[i..<min(next, text.endIndex)]
-                if fence == "```" {
-                    let langStart = next
-                    var lineEnd = langStart
-                    while lineEnd < text.endIndex, text[lineEnd] != "\n" { lineEnd = text.index(after: lineEnd) }
-                    let lang = langStart < lineEnd ? String(text[langStart..<lineEnd]).trimmingCharacters(in: .whitespaces) : nil
-                    let codeStart = lineEnd < text.endIndex ? text.index(after: lineEnd) : lineEnd
-                    var search = codeStart
-                    var foundEnd: String.Index?
-                    while search < text.endIndex {
-                        if text[search] == "`" {
-                            let n = text.index(search, offsetBy: 3, limitedBy: text.endIndex) ?? text.endIndex
-                            if text[search..<min(n, text.endIndex)] == "```" { foundEnd = search; break }
-                        }
-                        search = text.index(after: search)
-                    }
-                    if let end = foundEnd {
-                        if !buffer.isEmpty { result.append((.text, buffer, nil)); buffer = "" }
-                        let code = String(text[codeStart..<end])
-                        result.append((.code, code, lang))
-                        i = min(text.index(end, offsetBy: 3), text.endIndex)
-                        continue
-                    }
+        var codeLang: String? = nil
+        var inCode = false
+
+        for line in lines {
+            if line.starts(with: "```") {
+                if inCode {
+                    segments.append((.code, buffer, codeLang))
+                    buffer = ""
+                    codeLang = nil
+                    inCode = false
+                } else {
+                    inCode = true
+                    codeLang = line.dropFirst(3).trimmingCharacters(in: .whitespaces)
                 }
+            } else if inCode {
+                buffer += line + "\n"
+            } else if line.starts(with: "|") {
+                segments.append((.table, line, nil))
+            } else if line.starts(with: "- ") {
+                segments.append((.ul, line, nil))
+            } else if line.starts(with: "1. ") {
+                segments.append((.ol, line, nil))
+            } else if line.starts(with: "---") {
+                segments.append((.hr, line, nil))
+            } else {
+                segments.append((.text, line, nil))
             }
-            if text[i] == "|" {
-                let atLineStart = (i == text.startIndex) || text[text.index(before: i)] == "\n"
-                if atLineStart {
-                    var headerEnd = i
-                    while headerEnd < text.endIndex, text[headerEnd] != "\n" { headerEnd = text.index(after: headerEnd) }
-                    let headerLine = String(text[i..<headerEnd]).trimmingCharacters(in: .whitespaces)
-                    let delimStart = headerEnd < text.endIndex ? text.index(after: headerEnd) : headerEnd
-                    var delimEnd = delimStart
-                    while delimEnd < text.endIndex, text[delimEnd] != "\n" { delimEnd = text.index(after: delimEnd) }
-                    let delimLine = delimStart < text.endIndex ? String(text[delimStart..<delimEnd]).trimmingCharacters(in: .whitespaces) : ""
-                    let isDelimiter = delimLine.hasPrefix("|") && delimLine.contains("-")
-                    if isDelimiter {
-                        var rowsEnd = delimEnd
-                        var rows: [String] = [headerLine, delimLine]
-                        while rowsEnd < text.endIndex {
-                            let rowStart = rowsEnd < text.endIndex ? text.index(after: rowsEnd) : rowsEnd
-                            var rowEnd = rowStart
-                            while rowEnd < text.endIndex, text[rowEnd] != "\n" { rowEnd = text.index(after: rowEnd) }
-                            if rowStart >= text.endIndex { break }
-                            let rowLine = String(text[rowStart..<rowEnd]).trimmingCharacters(in: .whitespaces)
-                            if rowLine.hasPrefix("|") { rows.append(rowLine); rowsEnd = rowEnd } else { break }
-                        }
-                        if !buffer.isEmpty { result.append((.text, buffer, nil)); buffer = "" }
-                        let block = rows.joined(separator: "\n")
-                        result.append((.table, block, nil))
-                        i = rowsEnd
-                        if i < text.endIndex { i = text.index(after: i) }
-                        continue
-                    }
-                }
-            }
-            if text[i] == "-" {
-                let atLineStart = (i == text.startIndex) || text[text.index(before: i)] == "\n"
-                if atLineStart {
-                    var lineEnd = i
-                    while lineEnd < text.endIndex, text[lineEnd] != "\n" { lineEnd = text.index(after: lineEnd) }
-                    let rawLine = String(text[i..<lineEnd]).trimmingCharacters(in: .whitespaces)
-                    if rawLine == "---" {
-                        if !buffer.isEmpty { result.append((.text, buffer, nil)); buffer = "" }
-                        result.append((.hr, "", nil))
-                        i = lineEnd
-                        if i < text.endIndex { i = text.index(after: i) }
-                        continue
-                    }
-                    if rawLine.hasPrefix("- ") || rawLine.hasPrefix("* ") {
-                        var rowsEnd = lineEnd
-                        var rows: [String] = []
-                        var cursor = i
-                        while cursor < text.endIndex {
-                            var rEnd = cursor
-                            while rEnd < text.endIndex, text[rEnd] != "\n" { rEnd = text.index(after: rEnd) }
-                            let rLine = String(text[cursor..<rEnd]).trimmingCharacters(in: .whitespaces)
-                            if rLine.hasPrefix("- ") || rLine.hasPrefix("* ") {
-                                rows.append(rLine)
-                                rowsEnd = rEnd
-                                cursor = rEnd < text.endIndex ? text.index(after: rEnd) : rEnd
-                            } else { break }
-                        }
-                        if !rows.isEmpty {
-                            if !buffer.isEmpty { result.append((.text, buffer, nil)); buffer = "" }
-                            let block = rows.joined(separator: "\n")
-                            result.append((.ul, block, nil))
-                            i = rowsEnd
-                            if i < text.endIndex { i = text.index(after: i) }
-                            continue
-                        }
-                    }
-                }
-            }
-            if text[i].isNumber {
-                let atLineStart = (i == text.startIndex) || text[text.index(before: i)] == "\n"
-                if atLineStart {
-                    var lineEnd = i
-                    while lineEnd < text.endIndex, text[lineEnd] != "\n" { lineEnd = text.index(after: lineEnd) }
-                    let rawLine = String(text[i..<lineEnd]).trimmingCharacters(in: .whitespaces)
-                    if let dot = rawLine.firstIndex(of: "."), dot > rawLine.startIndex {
-                        var rowsEnd = lineEnd
-                        var rows: [String] = []
-                        var cursor = i
-                        while cursor < text.endIndex {
-                            var rEnd = cursor
-                            while rEnd < text.endIndex, text[rEnd] != "\n" { rEnd = text.index(after: rEnd) }
-                            let rLine = String(text[cursor..<rEnd]).trimmingCharacters(in: .whitespaces)
-                            if let d = rLine.firstIndex(of: "."), d > rLine.startIndex {
-                                rows.append(rLine)
-                                rowsEnd = rEnd
-                                cursor = rEnd < text.endIndex ? text.index(after: rEnd) : rEnd
-                            } else { break }
-                        }
-                        if !rows.isEmpty {
-                            if !buffer.isEmpty { result.append((.text, buffer, nil)); buffer = "" }
-                            let block = rows.joined(separator: "\n")
-                            result.append((.ol, block, nil))
-                            i = rowsEnd
-                            if i < text.endIndex { i = text.index(after: i) }
-                            continue
-                        }
-                    }
-                }
-            }
-            buffer.append(text[i])
-            i = text.index(after: i)
         }
-        if !buffer.isEmpty { result.append((.text, buffer, nil)) }
-        return result
+
+        if inCode {
+            segments.append((.code, buffer, codeLang))
+        }
+
+        return segments
     }
 
     private enum SegmentKind { case text, code, hr, table, ul, ol }
 
-    private func tightenAttributedString(_ source: NSAttributedString) -> NSAttributedString {
-        let m = NSMutableAttributedString(attributedString: source)
-        m.enumerateAttributes(in: NSRange(location: 0, length: m.length), options: []) { attrs, range, _ in
-            if let ps = attrs[.paragraphStyle] as? NSParagraphStyle {
-                let newPS = ps.mutableCopy() as! NSMutableParagraphStyle
-                newPS.lineSpacing = max(0, min(ps.lineSpacing, 1))
-                newPS.paragraphSpacing = max(0, min(ps.paragraphSpacing, 2))
-                m.addAttribute(.paragraphStyle, value: newPS, range: range)
-            }
-        }
-        return m
-    }
+    private func tightenAttributedString(_ source: NSAttributedString) -> NSAttributedString { return source }
 
-    private func scaleAttributedString(_ source: NSAttributedString, factor: CGFloat) -> NSAttributedString {
-        let m = NSMutableAttributedString(attributedString: source)
-        m.enumerateAttributes(in: NSRange(location: 0, length: m.length), options: []) { attrs, range, _ in
-            if let font = attrs[.font] as? UIFont {
-                let newFont = UIFont(descriptor: font.fontDescriptor, size: font.pointSize * factor)
-                m.addAttribute(.font, value: newFont, range: range)
-            }
-        }
-        return m
-    }
-
-    private func centerAttributedString(_ source: NSAttributedString) -> NSAttributedString {
-        let m = NSMutableAttributedString(attributedString: source)
-        m.addAttribute(.paragraphStyle, value: {
-            let ps = NSMutableParagraphStyle()
-            ps.alignment = .center
-            return ps
-        }(), range: NSRange(location: 0, length: m.length))
-        return m
-    }
-
+    // MARK: - Nested Private Classes
     private final class CodeBlockView: UIView {
         private let textView = UITextView()
         var lang: String?
         var text: String = "" { didSet { render() } }
         var textColor: UIColor = .label { didSet { render() } }
+
         override init(frame: CGRect) {
             super.init(frame: frame)
-            // no container styling for lists
             backgroundColor = .clear
             textView.isEditable = false
             textView.isScrollEnabled = false
@@ -527,67 +342,29 @@ public final class MessageCell: UITableViewCell {
                 textView.bottomAnchor.constraint(equalTo: bottomAnchor)
             ])
         }
+
         private func render() {
-            let attributed = highlight(text: text, lang: lang)
-            textView.attributedText = attributed
+            textView.attributedText = NSAttributedString(string: text, attributes: [.foregroundColor: textColor, .font: UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)])
         }
-        private func highlight(text: String, lang: String?) -> NSAttributedString {
-            let baseFont = UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
-            let m = NSMutableAttributedString(string: text, attributes: [
-                .font: baseFont,
-                .foregroundColor: textColor
-            ])
-            let lower = (lang ?? "").lowercased()
-            if ["js","ts","javascript","typescript"].contains(lower) {
-                applyRegex(m, pattern: "//.*", color: .systemGray)
-                applyRegex(m, pattern: "/\\*[\\s\\S]*?\\*/", color: .systemGray)
-                applyRegex(m, pattern: "\\b(let|const|var|function|return|if|else|for|while|import|from|export|class|extends|new|true|false|null|undefined|async|await|interface|type)\\b", color: .systemPink)
-                applyRegex(m, pattern: "\"(?:\\\\.|[^\"\\])*\"|'(?:\\\\.|[^'\\])*'", color: .systemGreen)
-                applyRegex(m, pattern: "\\b[0-9]+(?:\\.[0-9]+)?\\b", color: .systemOrange)
-            } else if ["bash","sh","shell"].contains(lower) {
-                applyRegex(m, pattern: "#.*", color: .systemGray)
-                applyRegex(m, pattern: "\\b(cd|git|npm|node|export)\\b", color: .systemPink)
-                applyRegex(m, pattern: "\"(?:\\\\.|[^\"\\])*\"|'(?:\\\\.|[^'\\])*'", color: .systemGreen)
-                applyRegex(m, pattern: "\\b[0-9]+(?:\\.[0-9]+)?\\b", color: .systemOrange)
-            } else if ["json"].contains(lower) {
-                applyRegex(m, pattern: "\"(?:\\\\.|[^\"\\])*\"", color: .systemGreen)
-                applyRegex(m, pattern: "\\b(true|false|null)\\b", color: .systemPink)
-                applyRegex(m, pattern: "\\b[0-9]+(?:\\.[0-9]+)?\\b", color: .systemOrange)
-            } else if ["env"].contains(lower) {
-                applyRegex(m, pattern: "#.*", color: .systemGray)
-                applyRegex(m, pattern: "\\b[A-Z_][A-Z0-9_]*\\b", color: .systemPink)
-                applyRegex(m, pattern: "\"(?:\\\\.|[^\"\\])*\"|'(?:\\\\.|[^'\\])*'", color: .systemGreen)
-            } else {
-                applyRegex(m, pattern: "\"(?:\\\\.|[^\"\\])*\"|'(?:\\\\.|[^'\\])*'", color: .systemGreen)
-                applyRegex(m, pattern: "\\b[0-9]+(?:\\.[0-9]+)?\\b", color: .systemOrange)
-            }
-            return m
-        }
-        private func applyRegex(_ m: NSMutableAttributedString, pattern: String, color: UIColor) {
-            guard let re = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else { return }
-            let text = m.string
-            let range = NSRange(location: 0, length: (text as NSString).length)
-            re.enumerateMatches(in: text, options: [], range: range) { match, _, _ in
-                if let r = match?.range { m.addAttribute(.foregroundColor, value: color, range: r) }
-            }
-        }
+
         required init?(coder: NSCoder) { super.init(coder: coder) }
     }
+
     private final class HorizontalRuleView: UIView {
         override init(frame: CGRect) {
             super.init(frame: frame)
             translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                heightAnchor.constraint(equalToConstant: 1)
-            ])
+            heightAnchor.constraint(equalToConstant: 1).isActive = true
             backgroundColor = .separator
         }
         required init?(coder: NSCoder) { super.init(coder: coder) }
     }
+
     private final class MarkdownTableView: UIView {
         private let stack = UIStackView()
         var textColor: UIColor = .label { didSet { applyColors() } }
         var text: String = "" { didSet { render() } }
+
         override init(frame: CGRect) {
             super.init(frame: frame)
             stack.axis = .vertical
@@ -602,61 +379,35 @@ public final class MessageCell: UITableViewCell {
             ])
             layer.cornerRadius = 8
         }
+
         private func render() {
             stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-            let lines = text.split(separator: "\n").map { String($0) }
-            guard lines.count >= 2 else { return }
-            let header = splitRow(lines[0])
-            let bodyStart = 2
-            let rows = lines.dropFirst(bodyStart).map { splitRow($0) }
-            addRow(header, bold: true)
-            for r in rows { addRow(r, bold: false) }
-            applyColors()
-        }
-        private func splitRow(_ s: String) -> [String] {
-            var parts: [String] = []
-            var current = ""
-            for ch in s {
-                if ch == "|" {
-                    parts.append(current.trimmingCharacters(in: .whitespaces))
-                    current = ""
-                } else { current.append(ch) }
+            let lines = text.components(separatedBy: "\n")
+            for line in lines {
+                let label = UILabel()
+                label.font = .systemFont(ofSize: 14)
+                label.numberOfLines = 0
+                label.text = line
+                label.textColor = textColor
+                stack.addArrangedSubview(label)
             }
-            parts.append(current.trimmingCharacters(in: .whitespaces))
-            if !parts.isEmpty { parts.removeFirst() }
-            if !parts.isEmpty { parts.removeLast() }
-            return parts
         }
-        private func addRow(_ cols: [String], bold: Bool) {
-            let row = UIStackView()
-            row.axis = .horizontal
-            row.spacing = 8
-            row.distribution = .fillEqually
-            for c in cols {
-                let l = UILabel()
-                l.numberOfLines = 0
-                l.font = bold ? .boldSystemFont(ofSize: 16) : .systemFont(ofSize: 16)
-                l.text = c
-                row.addArrangedSubview(l)
-            }
-            stack.addArrangedSubview(row)
-        }
+
         private func applyColors() {
-            for v in stack.arrangedSubviews {
-                if let row = v as? UIStackView {
-                    for cell in row.arrangedSubviews {
-                        if let l = cell as? UILabel { l.textColor = textColor }
-                    }
-                }
+            for row in stack.arrangedSubviews {
+                if let l = row as? UILabel { l.textColor = textColor }
             }
         }
+
         required init?(coder: NSCoder) { super.init(coder: coder) }
     }
+
     private final class MarkdownListView: UIView {
         private let stack = UIStackView()
         var ordered: Bool = false { didSet { render() } }
         var textColor: UIColor = .label { didSet { applyColors() } }
         var items: String = "" { didSet { render() } }
+
         override init(frame: CGRect) {
             super.init(frame: frame)
             stack.axis = .vertical
@@ -671,55 +422,26 @@ public final class MessageCell: UITableViewCell {
             ])
             layer.cornerRadius = 8
         }
+
         private func render() {
             stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-            let lines = items.split(separator: "\n").map { String($0) }
-            var index = 1
-            for line in lines {
-                let content: String
-                if ordered, let dot = line.firstIndex(of: ".") {
-                    content = String(line[line.index(after: dot)...]).trimmingCharacters(in: .whitespaces)
-                } else {
-                    let drop = line.hasPrefix("- ") ? 2 : (line.hasPrefix("* ") ? 2 : 0)
-                    content = drop > 0 ? String(line.dropFirst(drop)).trimmingCharacters(in: .whitespaces) : line
-                }
-                let row = UIStackView()
-                row.axis = .horizontal
-                row.spacing = 8
-                row.alignment = .top
-                let marker = UILabel()
-                marker.font = .systemFont(ofSize: 16)
-                marker.textColor = textColor
-                marker.text = ordered ? "\(index)." : "•"
-                index += 1
+            let lines = items.components(separatedBy: "\n")
+            for (idx, line) in lines.enumerated() {
                 let label = UILabel()
+                label.font = .systemFont(ofSize: 14)
                 label.numberOfLines = 0
-                label.font = .systemFont(ofSize: 16)
-                #if canImport(Down)
-                if let attr = try? Down(markdownString: content).toAttributedString() {
-                    label.attributedText = attr
-                } else { label.text = content }
-                #else
-                label.text = content
-                #endif
-                row.addArrangedSubview(marker)
-                row.addArrangedSubview(label)
-                marker.setContentHuggingPriority(.required, for: .horizontal)
-                marker.setContentCompressionResistancePriority(.required, for: .horizontal)
-                label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-                stack.addArrangedSubview(row)
+                label.textColor = textColor
+                label.text = ordered ? "\(idx+1). \(line)" : "• \(line)"
+                stack.addArrangedSubview(label)
             }
-            applyColors()
         }
+
         private func applyColors() {
-            for v in stack.arrangedSubviews {
-                if let row = v as? UIStackView {
-                    for cell in row.arrangedSubviews {
-                        if let l = cell as? UILabel { l.textColor = textColor }
-                    }
-                }
+            for row in stack.arrangedSubviews {
+                if let l = row as? UILabel { l.textColor = textColor }
             }
         }
+
         required init?(coder: NSCoder) { super.init(coder: coder) }
     }
 }

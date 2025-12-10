@@ -45,11 +45,33 @@ struct DashScopeSSEParser {
                 return .reasoning(reasoning)
             }
 
-            if let content = message["content"] as? String, !content.isEmpty {
-                return .token(content)
+            if let token = extractText(from: message["content"]), !token.isEmpty {
+                return .token(token)
             }
         }
 
         return .ignore
+    }
+    
+    private static func extractText(from any: Any?) -> String? {
+        guard let any else { return nil }
+
+        if let s = any as? String {
+            return s
+        }
+
+        if let arr = any as? [[String: Any]] {
+            var out = ""
+            for item in arr {
+                if let t = item["text"] as? String {
+                    out += t
+                } else if let t = item["content"] as? String { // 兜底：有的字段名叫 content
+                    out += t
+                }
+            }
+            return out.isEmpty ? nil : out
+        }
+
+        return nil
     }
 }

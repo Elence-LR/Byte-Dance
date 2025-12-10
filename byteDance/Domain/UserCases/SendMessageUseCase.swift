@@ -15,18 +15,36 @@ public final class SendMessageUseCase {
         self.service = service
     }
 
-    public func execute(session: Session, userText: String, config: AIModelConfig) async throws -> Message {
-        let userMessage = Message(role: .user, content: userText)
+    // 支持传入完整 userMessage（可携带 attachments）
+    public func execute(session: Session, userMessage: Message, config: AIModelConfig) async throws -> Message {
         repository.appendMessage(sessionID: session.id, message: userMessage)
-        let response = try await service.sendMessage(sessionID: session.id, messages: repository.fetchMessages(sessionID: session.id), config: config)
+        let response = try await service.sendMessage(
+            sessionID: session.id,
+            messages: repository.fetchMessages(sessionID: session.id),
+            config: config
+        )
         repository.appendMessage(sessionID: session.id, message: response)
         return response
     }
 
-    public func stream(session: Session, userText: String, config: AIModelConfig) -> AsyncStream<Message> {
-        // 目前发送出去的内容只包含content，不会包含reasoning
-        let userMessage = Message(role: .user, content: userText)
+    // 旧的文本入口（不破坏现有调用方）
+    public func execute(session: Session, userText: String, config: AIModelConfig) async throws -> Message {
+        try await execute(session: session, userMessage: Message(role: .user, content: userText), config: config)
+    }
+
+    // 支持传入完整 userMessage（可携带 attachments）
+    public func stream(session: Session, userMessage: Message, config: AIModelConfig) -> AsyncStream<Message> {
         repository.appendMessage(sessionID: session.id, message: userMessage)
-        return service.streamMessage(sessionID: session.id, messages: repository.fetchMessages(sessionID: session.id), config: config)
+        return service.streamMessage(
+            sessionID: session.id,
+            messages: repository.fetchMessages(sessionID: session.id),
+            config: config
+        )
+    }
+
+    // 旧的文本入口
+    public func stream(session: Session, userText: String, config: AIModelConfig) -> AsyncStream<Message> {
+        stream(session: session, userMessage: Message(role: .user, content: userText), config: config)
     }
 }
+
