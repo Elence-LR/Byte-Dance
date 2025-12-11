@@ -282,7 +282,9 @@ public final class MessageCell: UITableViewCell {
         var codeLang: String? = nil
         var inCode = false
 
-        for line in lines {
+        var idx = 0
+        while idx < lines.count {
+            let line = lines[idx]
             if line.starts(with: "```") {
                 if inCode {
                     segments.append((.code, buffer, codeLang))
@@ -296,16 +298,51 @@ public final class MessageCell: UITableViewCell {
             } else if inCode {
                 buffer += line + "\n"
             } else if line.starts(with: "|") {
-                segments.append((.table, line, nil))
-            } else if line.starts(with: "- ") {
-                segments.append((.ul, line, nil))
-            } else if line.starts(with: "1. ") {
-                segments.append((.ol, line, nil))
+                let header = line
+                let nextIdx = idx + 1
+                if nextIdx < lines.count {
+                    let delim = lines[nextIdx]
+                    let isDelim = delim.trimmingCharacters(in: .whitespaces).hasPrefix("|") && delim.contains("-")
+                    if isDelim {
+                        var rows: [String] = [header, delim]
+                        var r = nextIdx + 1
+                        while r < lines.count, lines[r].trimmingCharacters(in: .whitespaces).hasPrefix("|") {
+                            rows.append(lines[r])
+                            r += 1
+                        }
+                        let block = rows.joined(separator: "\n")
+                        segments.append((.table, block, nil))
+                        idx = r
+                        continue
+                    }
+                }
+                segments.append((.text, line, nil))
+            } else if line.starts(with: "- ") || line.starts(with: "* ") {
+                var rows: [String] = []
+                var r = idx
+                while r < lines.count, (lines[r].starts(with: "- ") || lines[r].starts(with: "* ")) {
+                    rows.append(lines[r])
+                    r += 1
+                }
+                segments.append((.ul, rows.joined(separator: "\n"), nil))
+                idx = r
+                continue
+            } else if line.trimmingCharacters(in: .whitespaces).range(of: "^\\d+\\. ", options: .regularExpression) != nil {
+                var rows: [String] = []
+                var r = idx
+                while r < lines.count, lines[r].trimmingCharacters(in: .whitespaces).range(of: "^\\d+\\. ", options: .regularExpression) != nil {
+                    rows.append(lines[r])
+                    r += 1
+                }
+                segments.append((.ol, rows.joined(separator: "\n"), nil))
+                idx = r
+                continue
             } else if line.starts(with: "---") {
                 segments.append((.hr, line, nil))
             } else {
                 segments.append((.text, line, nil))
             }
+            idx += 1
         }
 
         if inCode {
@@ -344,7 +381,54 @@ public final class MessageCell: UITableViewCell {
         }
 
         private func render() {
-            textView.attributedText = NSAttributedString(string: text, attributes: [.foregroundColor: textColor, .font: UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)])
+            textView.attributedText = highlight(text: text, lang: lang)
+        }
+        private func highlight(text: String, lang: String?) -> NSAttributedString {
+            let baseFont = UIFont.monospacedSystemFont(ofSize: 16, weight: .regular)
+            let m = NSMutableAttributedString(string: text, attributes: [
+                .font: baseFont,
+                .foregroundColor: textColor
+            ])
+            let lower = (lang ?? "").lowercased()
+            func rx(_ pattern: String, _ color: UIColor) {
+                guard let re = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else { return }
+                let s = m.string
+                let range = NSRange(location: 0, length: (s as NSString).length)
+                re.enumerateMatches(in: s, options: [], range: range) { match, _, _ in
+                    if let r = match?.range { m.addAttribute(.foregroundColor, value: color, range: r) }
+                }
+            }
+            let strD = "\"(?:[^\\\"]|\\.)*\""
+            let strS = "'(?:[^\\']|\\.)*'"
+            let num  = "\\b\\d+(?:\\.\\d+)?\\b"
+            if ["js","ts","javascript","typescript"].contains(lower) {
+                rx("//.*", .systemGray)
+                rx("/\\*[\\s\\S]*?\\*/", .systemGray)
+                rx("\\b(let|const|var|function|return|if|else|for|while|import|from|export|class|extends|new|true|false|null|undefined|async|await|interface|type)\\b", .systemPink)
+                rx(strD, .systemGreen)
+                rx(strS, .systemGreen)
+                rx(num, .systemOrange)
+            } else if ["bash","sh","shell"].contains(lower) {
+                rx("#.*", .systemGray)
+                rx("\\b(cd|git|npm|node|export)\\b", .systemPink)
+                rx(strD, .systemGreen)
+                rx(strS, .systemGreen)
+                rx(num, .systemOrange)
+            } else if ["json"].contains(lower) {
+                rx(strD, .systemGreen)
+                rx("\\b(true|false|null)\\b", .systemPink)
+                rx(num, .systemOrange)
+            } else if ["env"].contains(lower) {
+                rx("#.*", .systemGray)
+                rx("\\b[A-Z_][A-Z0-9_]*\\b", .systemPink)
+                rx(strD, .systemGreen)
+                rx(strS, .systemGreen)
+            } else {
+                rx(strD, .systemGreen)
+                rx(strS, .systemGreen)
+                rx(num, .systemOrange)
+            }
+            return m
         }
 
         required init?(coder: NSCoder) { super.init(coder: coder) }
@@ -383,14 +467,43 @@ public final class MessageCell: UITableViewCell {
         private func render() {
             stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
             let lines = text.components(separatedBy: "\n")
-            for line in lines {
-                let label = UILabel()
-                label.font = .systemFont(ofSize: 14)
-                label.numberOfLines = 0
-                label.text = line
-                label.textColor = textColor
-                stack.addArrangedSubview(label)
+            guard lines.count >= 2 else { return }
+            let header = splitRow(lines[0])
+            let bodyStart = 2
+            let rows = Array(lines.dropFirst(bodyStart)).map { splitRow($0) }
+            addRow(header, bold: true)
+            for r in rows { addRow(r, bold: false) }
+            applyColors()
+        }
+        private func splitRow(_ s: String) -> [String] {
+            var parts: [String] = []
+            var current = ""
+            for ch in s {
+                if ch == "|" { parts.append(current.trimmingCharacters(in: .whitespaces)); current = "" }
+                else { current.append(ch) }
             }
+            parts.append(current.trimmingCharacters(in: .whitespaces))
+            if !parts.isEmpty { parts.removeFirst() }
+            if !parts.isEmpty { parts.removeLast() }
+            return parts
+        }
+        private func addRow(_ cols: [String], bold: Bool) {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.spacing = 8
+            row.distribution = .fillEqually
+            for c in cols {
+                let l = UILabel()
+                l.numberOfLines = 0
+                l.font = bold ? .boldSystemFont(ofSize: 16) : .systemFont(ofSize: 16)
+                #if canImport(Down)
+                if let attr = try? Down(markdownString: c).toAttributedString() { l.attributedText = attr } else { l.text = c }
+                #else
+                l.text = c
+                #endif
+                row.addArrangedSubview(l)
+            }
+            stack.addArrangedSubview(row)
         }
 
         private func applyColors() {
@@ -426,14 +539,36 @@ public final class MessageCell: UITableViewCell {
         private func render() {
             stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
             let lines = items.components(separatedBy: "\n")
-            for (idx, line) in lines.enumerated() {
+            var index = 1
+            for line in lines {
+                let content: String
+                if ordered, let dot = line.firstIndex(of: ".") { content = String(line[line.index(after: dot)...]).trimmingCharacters(in: .whitespaces) }
+                else { let drop = line.hasPrefix("- ") ? 2 : (line.hasPrefix("* ") ? 2 : 0); content = drop > 0 ? String(line.dropFirst(drop)).trimmingCharacters(in: .whitespaces) : line }
+                let row = UIStackView()
+                row.axis = .horizontal
+                row.spacing = 8
+                row.alignment = .top
+                let marker = UILabel()
+                marker.font = .systemFont(ofSize: 16)
+                marker.textColor = textColor
+                marker.text = ordered ? "\(index)." : "•"
+                index += 1
                 let label = UILabel()
-                label.font = .systemFont(ofSize: 14)
                 label.numberOfLines = 0
-                label.textColor = textColor
-                label.text = ordered ? "\(idx+1). \(line)" : "• \(line)"
-                stack.addArrangedSubview(label)
+                label.font = .systemFont(ofSize: 16)
+                #if canImport(Down)
+                if let attr = try? Down(markdownString: content).toAttributedString() { label.attributedText = attr } else { label.text = content }
+                #else
+                label.text = content
+                #endif
+                row.addArrangedSubview(marker)
+                row.addArrangedSubview(label)
+                marker.setContentHuggingPriority(.required, for: .horizontal)
+                marker.setContentCompressionResistancePriority(.required, for: .horizontal)
+                label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                stack.addArrangedSubview(row)
             }
+            applyColors()
         }
 
         private func applyColors() {
