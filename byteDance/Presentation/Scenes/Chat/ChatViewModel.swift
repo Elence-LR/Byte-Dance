@@ -26,11 +26,13 @@ public final class ChatViewModel {
         // 仅在本地记录消息，不真正发送
         Task {
             let userMessage = Message(role: .user, content: text, reasoning: nil)
+            print("VM send local user length:", text.count)
             repository.appendMessage(sessionID: session.id, message: userMessage)
             onNewMessage?(userMessage)
             
             // 模拟助手回复
             repository.appendMessage(sessionID: session.id, message: Message(role: .assistant, content: "Response to: \(text)"))
+            print("VM send local assistant length:", text.count)
             onNewMessage?(Message(role: .assistant, content: "Response to: \(text)"))
         }
     }
@@ -79,6 +81,8 @@ public final class ChatViewModel {
     
     // MARK: - 统一入口（文本/图片都走这里）
     private func stream(userMessage: Message, config: AIModelConfig) {
+        print("VM stream start user role:", userMessage.role.rawValue, "contentLen:", userMessage.content.count)
+        print("VM config provider:", config.provider.rawValue, "model:", config.modelName, "baseURL:", config.baseURL ?? "nil", "apiKey:", (config.apiKey?.isEmpty == false), "thinking:", config.thinking, "tokenLimit:", config.tokenLimit)
         // 1) 启动 usecase stream（它会 append user message 到 repo）
         let s = sendUseCase.stream(session: session, userMessage: userMessage, config: config)
 
@@ -102,6 +106,7 @@ public final class ChatViewModel {
             var contentBuffer = ""
             var reasoningBuffer = ""
             for await m in s {
+                print("VM stream token role:", m.role.rawValue, "contentLen:", m.content.count, "reasoningLen:", m.reasoning?.count ?? 0)
                 if let r = m.reasoning {
                     reasoningBuffer += r
                     repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)

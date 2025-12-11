@@ -10,7 +10,8 @@ public final class OpenAIAdapter: LLMServiceProtocol {
     }
 
     public func sendMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) async throws -> Message {
-        let url = APIEndpoints.chatURL(model: config.modelName)
+        let url = normalizedOpenAIURL(config: config)
+        print("OpenAI send URL:", url.absoluteString)
         let payload = try JSONEncoder().encode(RequestPayload(messages: messages, config: config))
         let data = try await client.request(url: url, headers: headers(config: config), body: payload)
         let text = String(data: data, encoding: .utf8) ?? ""
@@ -18,7 +19,8 @@ public final class OpenAIAdapter: LLMServiceProtocol {
     }
 
     public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
-        let url = APIEndpoints.openAIStyleStreamURL()
+        let url = normalizedOpenAIURL(config: config)
+        print("OpenAI stream URL:", url.absoluteString)
         let headers = APIEndpoints.openAIStyleHeaders(apiKey: config.apiKey ?? "")
         let body = makeBody(messages: messages, config: config)
 
@@ -29,8 +31,10 @@ public final class OpenAIAdapter: LLMServiceProtocol {
                 for await line in lines {
                     switch OpenAIStyleSSEParser.parse(line: line) {
                     case .token(let token):
+                        print("OpenAI token:", token.prefix(80))
                         continuation.yield(Message(role: .assistant, content: token))
                     case .reasoning(let r):
+                        print("OpenAI reasoning:", r.prefix(80))
                         continuation.yield(Message(role: .assistant, content: "", reasoning: r))
                     case .done:
                         continuation.finish()
@@ -49,8 +53,17 @@ public final class OpenAIAdapter: LLMServiceProtocol {
     private func makeBody(messages: [Message], config: AIModelConfig) -> Data? {
         let messagesArr = messages.map { ["role": $0.role.rawValue, "content": $0.content] }
 
+        let modelName: String = {
+            if let base = config.baseURL, base.contains("deepseek.com") {
+                let allowed = ["deepseek-chat", "deepseek-reasoner"]
+                if allowed.contains(config.modelName) { return config.modelName }
+                return config.thinking ? "deepseek-reasoner" : "deepseek-chat"
+            }
+            return config.modelName
+        }()
+
         var payload: [String: Any] = [
-            "model": config.modelName,
+            "model": modelName,
             "messages": messagesArr,
             "stream": true
         ]
@@ -76,3 +89,11 @@ public final class OpenAIAdapter: LLMServiceProtocol {
         let config: AIModelConfig
     }
 }
+    private func normalizedOpenAIURL(config: AIModelConfig) -> URL {
+        if let base = config.baseURL, !base.isEmpty {
+            if base.hasSuffix("/chat/completions") { return URL(string: base)! }
+            if base.contains("deepseek.com") { return URL(string: base + "/chat/completions")! }
+            return URL(string: base)!
+        }
+        return APIEndpoints.openAIStyleStreamURL()
+    }

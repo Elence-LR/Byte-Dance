@@ -17,23 +17,22 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     }
 
     // 模型选择
-    private struct ModelOption {
+    fileprivate struct ModelOption {
             let title: String        // 按钮展示名
             let config: AIModelConfig
         }
 
-    private lazy var modelOptions: [ModelOption] = [
-        .init(title: "DeepSeek", config: AIModelConfig(provider: .openAIStyle, modelName: "deepseek-chat", thinking: true, apiKey: "sk-24696f0c8e1f490386d913ef1caba425")),
-        .init(title: "Qwen-Plus",   config: AIModelConfig(provider: .dashscope, modelName: "qwen-plus", thinking: true, apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
-        .init(title: "Qwen3-VL-Plus",   config: AIModelConfig(provider: .dashscope, modelName: "qwen3-vl-plus", thinking: false, apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
-    ]
+    private var modelOptions: [ChatViewController.ModelOption] = []
 
     private var currentModelIndex: Int = 0 {
         didSet { updateModelButtonTitle() }
     }
 
     private var currentConfig: AIModelConfig {
-        modelOptions[currentModelIndex].config
+        if modelOptions.isEmpty {
+            return AIModelConfig(provider: .openAIStyle, modelName: "deepseek-chat", thinking: true)
+        }
+        return modelOptions[currentModelIndex].config
     }
 
     private let modelButton = UIButton(type: .system)
@@ -54,13 +53,14 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         title = viewModel.session.title
         setupTable()
         setupInput()
-        setupThinkingToggle()
         setupModelSwitcher()
+        setupThinkingToggle()
         
         // 消息更新回调，用于刷新 UI
-        viewModel.onNewMessage = { [weak self] _ in
+        viewModel.onNewMessage = { [weak self] m in
             DispatchQueue.main.async {
                 guard let self else { return }
+                print("ChatVC onNewMessage role:", m.role.rawValue, "contentLen:", m.content.count, "reasoningLen:", m.reasoning?.count ?? 0)
                 self.tableView.reloadData()
                 let count = self.viewModel.messages().count
                 if count > 0 {
@@ -117,6 +117,8 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             guard let self else { return }
             var cfg = self.currentConfig
             cfg.thinking = self.thinkingEnabled
+            print("ChatVC onSend text length:", text.count)
+            print("ChatVC config provider:", cfg.provider.rawValue, "model:", cfg.modelName, "baseURL:", cfg.baseURL ?? "nil", "apiKey:", (cfg.apiKey?.isEmpty == false))
             self.viewModel.stream(text: text, config: cfg)
         }
 
@@ -208,14 +210,33 @@ extension ChatViewController {
 
         // iOS 14+：点按钮直接弹出菜单
         modelButton.showsMenuAsPrimaryAction = true
+        reloadModelOptions()
         rebuildModelMenu()
         updateModelButtonTitle()
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: modelButton)
     }
 
+    private func reloadModelOptions() {
+        var opts: [ChatViewController.ModelOption] = [
+            .init(title: "DeepSeek", config: AIModelConfig(provider: .openAIStyle, modelName: "deepseek-chat", thinking: true, apiKey: "sk-24696f0c8e1f490386d913ef1caba425")),
+            .init(title: "Qwen-Plus",   config: AIModelConfig(provider: .dashscope, modelName: "qwen-plus", thinking: true, apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
+            .init(title: "Qwen3-VL-Plus",   config: AIModelConfig(provider: .dashscope, modelName: "qwen3-vl-plus", thinking: false, apiKey: "sk-c548943059844079a4cdcb92ed19163a")),
+        ]
+        if let data = UserDefaults.standard.data(forKey: "custom_models"),
+           let arr = try? JSONDecoder().decode([AIModelConfig].self, from: data) {
+            for m in arr {
+                let title = m.modelName + " (Custom)"
+                opts.append(.init(title: title, config: m))
+            }
+        }
+        modelOptions = opts
+        if currentModelIndex >= modelOptions.count { currentModelIndex = 0 }
+    }
+
     
     private func rebuildModelMenu() {
+        reloadModelOptions()
         let actions = modelOptions.enumerated().map { idx, opt in
             UIAction(title: opt.title, state: (idx == currentModelIndex ? .on : .off)) { [weak self] _ in
                 self?.switchModel(to: idx)
@@ -226,6 +247,7 @@ extension ChatViewController {
 
     
     private func updateModelButtonTitle() {
+        guard !modelOptions.isEmpty else { return }
         modelButton.setTitle(modelOptions[currentModelIndex].title, for: .normal)
         rebuildModelMenu() // 让“对勾”状态刷新
     }
@@ -259,7 +281,7 @@ extension ChatViewController {
 
         thinkingButton.addTarget(self, action: #selector(didTapThinkingToggle), for: .touchUpInside)
 
-        // 初始值：可以默认跟当前模型的 config.thinking 对齐
+        // 初始值：与当前模型的 config.thinking 对齐（为空时使用默认）
         thinkingEnabled = currentConfig.thinking
 
         NSLayoutConstraint.activate([

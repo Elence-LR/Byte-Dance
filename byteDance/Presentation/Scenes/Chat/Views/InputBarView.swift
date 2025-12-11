@@ -72,6 +72,7 @@ public final class InputBarView: UIView, UITextViewDelegate {
     @objc private func sendTapped() {
         let text = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        print("InputBar sendTapped length:", text.count)
         onSend?(text)
         textView.text = ""
         updateTextViewHeight()

@@ -27,6 +27,7 @@ public final class ChatRepository: ChatRepositoryProtocol {
 
     public func appendMessage(sessionID: UUID, message: Message) {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        print("Repo append role:", message.role.rawValue, "contentLen:", message.content.count)
         sessions[index].messages.append(message)
     }
 
@@ -38,11 +39,13 @@ public final class ChatRepository: ChatRepositoryProtocol {
         guard let sIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         guard let mIndex = sessions[sIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
         sessions[sIndex].messages[mIndex].content = content
+        print("Repo update content len:", content.count)
     }
     
     public func updateMessageReasoning(sessionID: UUID, messageID: UUID, reasoning: String) {
         guard let sIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         guard let mIndex = sessions[sIndex].messages.firstIndex(where: { $0.id == messageID }) else { return }
         sessions[sIndex].messages[mIndex].reasoning = reasoning
+        print("Repo update reasoning len:", reasoning.count)
     }
 }

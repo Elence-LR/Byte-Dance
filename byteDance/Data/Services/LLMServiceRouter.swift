@@ -23,7 +23,10 @@ public final class LLMServiceRouter: LLMServiceProtocol {
     }
 
     private func service(for config: AIModelConfig) -> LLMServiceProtocol {
-        if UserDefaults.standard.bool(forKey: "test_mode_enabled") { return templateMock }
+        let testMode = UserDefaults.standard.bool(forKey: "test_mode_enabled")
+        print("Router testMode:", testMode)
+        print("Router provider:", config.provider.rawValue, "model:", config.modelName, "baseURL:", config.baseURL ?? "nil")
+        if testMode { return templateMock }
         switch config.provider {
         case .openAIStyle: return openAIStyle
         case .dashscope:   return dashscope

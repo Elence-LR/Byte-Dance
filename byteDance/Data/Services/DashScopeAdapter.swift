@@ -17,21 +17,23 @@ public final class DashScopeAdapter: LLMServiceProtocol {
     }
 
     public func sendMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) async throws -> Message {
-        // 一个非流式的最小实现（可以只实现 stream）
-        let url = APIEndpoints.dashScopeStreamURL()
+        let fallback = APIEndpoints.dashScopeStreamURL()
+        let url = URL(string: config.baseURL ?? fallback.absoluteString)!
+        print("DashScope send URL:", url.absoluteString)
         let headers = APIEndpoints.dashScopeHeaders(apiKey: config.apiKey ?? "", streaming: false)
 
         let body = makeDashScopeBody(messages: messages, config: config, incremental: false)
         let data = try await client.request(url: url, headers: headers, body: body)
 
-        // 非流式响应结构也在 output.choices[0].message.content
         let text = extractDashScopeFinalContent(from: data) ?? ""
         return Message(role: .assistant, content: text, reasoning: nil)
     }
 
     public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
         let useIM = needsMultimodal(messages)
-        let url = useIM ? APIEndpoints.dashScopeMultimodalURL() : APIEndpoints.dashScopeTextURL()
+        let fallback = useIM ? APIEndpoints.dashScopeMultimodalURL() : APIEndpoints.dashScopeTextURL()
+        let url = URL(string: config.baseURL ?? fallback.absoluteString)!
+        print("DashScope stream URL:", url.absoluteString)
         
         let headers = APIEndpoints.dashScopeHeaders(apiKey: config.apiKey ?? "", streaming: true)
         let body = makeDashScopeBody(messages: messages, config: config, incremental: true)
@@ -43,8 +45,10 @@ public final class DashScopeAdapter: LLMServiceProtocol {
                 for await line in lines {
                     switch DashScopeSSEParser.parse(line: line) {
                     case .token(let token):
+                        print("DashScope token:", token.prefix(80))
                         continuation.yield(Message(role: .assistant, content: token))
                     case .reasoning(let r):
+                        print("DashScope reasoning:", r.prefix(80))
                         // 你可以选择把思考过程也展示出来，比如用特殊前缀/单独气泡
                         continuation.yield(Message(role: .assistant, content: "", reasoning: r))
                     case .done:

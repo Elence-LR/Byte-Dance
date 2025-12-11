@@ -19,14 +19,16 @@ public struct AIModelConfig: Codable, Equatable {
     public var tokenLimit: Int
     public var apiKey: String?
     public var thinking: Bool
+    public var baseURL: String?
     
 
-    public init(provider: LLMProvider = .openAIStyle, modelName: String = "deepseek-chat", temperature: Double = 0.7, tokenLimit: Int = 4096, thinking: Bool = false, apiKey: String? = nil) {
+    public init(provider: LLMProvider = .openAIStyle, modelName: String = "deepseek-chat", temperature: Double = 0.7, tokenLimit: Int = 4096, thinking: Bool = false, apiKey: String? = nil, baseURL: String? = nil) {
         self.provider = provider
         self.modelName = modelName
         self.thinking = thinking
         self.temperature = temperature
         self.tokenLimit = tokenLimit
         self.apiKey = apiKey
+        self.baseURL = baseURL
     }
 }
