@@ -4,6 +4,7 @@
 //
 //  Created by 刘锐 on 2025/12/4.
 //
+
 import UIKit
 import PhotosUI
 
@@ -18,9 +19,9 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
 
     // 模型选择
     fileprivate struct ModelOption {
-            let title: String        // 按钮展示名
-            let config: AIModelConfig
-        }
+        let title: String        // 按钮展示名
+        let config: AIModelConfig
+    }
 
     private var modelOptions: [ChatViewController.ModelOption] = []
 
@@ -37,8 +38,6 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
 
     private let modelButton = UIButton(type: .system)
     
-    
-
     public init(viewModel: ChatViewModel) {
         self.viewModel = viewModel
         super.init(nibName: nil, bundle: nil)
@@ -60,7 +59,6 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         viewModel.onNewMessage = { [weak self] m in
             DispatchQueue.main.async {
                 guard let self else { return }
-                print("ChatVC onNewMessage role:", m.role.rawValue, "contentLen:", m.content.count, "reasoningLen:", m.reasoning?.count ?? 0)
                 self.tableView.reloadData()
                 let count = self.viewModel.messages().count
                 if count > 0 {
@@ -72,66 +70,84 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         }
     }
 
+    // MARK: - TableView
     private func setupTable() {
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(MessageCell.self, forCellReuseIdentifier: MessageCell.reuseId)
         tableView.separatorStyle = .none
-        
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 60
-        
         if #available(iOS 15.0, *) {
             tableView.isPrefetchingEnabled = false
         } else {
             tableView.prefetchDataSource = nil
         }
-
         view.addSubview(tableView)
     }
 
-
+    // MARK: - InputBar
     private func setupInput() {
         inputBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(inputBar)
         
-        // 布局约束
         NSLayoutConstraint.activate([
-            // TableView 顶部到安全区域
             tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            
-            // InputBar 位于底部安全区域
             inputBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             inputBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             inputBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            
-            // TableView 底部连接到 InputBar 顶部
             tableView.bottomAnchor.constraint(equalTo: inputBar.topAnchor)
         ])
         
-        // 文本发送按钮逻辑：调用 ViewModel 发送消息
+        // 文本发送
         inputBar.onSend = { [weak self] text in
             guard let self else { return }
             var cfg = self.currentConfig
             cfg.thinking = self.thinkingEnabled
-            print("ChatVC onSend text length:", text.count)
-            print("ChatVC config provider:", cfg.provider.rawValue, "model:", cfg.modelName, "baseURL:", cfg.baseURL ?? "nil", "apiKey:", (cfg.apiKey?.isEmpty == false))
             self.viewModel.stream(text: text, config: cfg)
         }
 
-        //李相瑜新增：图片按钮点击 -> 弹 picker
+        // 图片按钮点击 -> 弹出 PHPicker 支持多选
         inputBar.onImageButtonTapped = { [weak self] in
             guard let self = self else { return }
             var pickerConfig = PHPickerConfiguration()
             pickerConfig.filter = .images
-            pickerConfig.selectionLimit = 1
+            pickerConfig.selectionLimit = 0 // 多选
             let picker = PHPickerViewController(configuration: pickerConfig)
             picker.delegate = self
             self.present(picker, animated: true)
         }
+    }
+
+    // MARK: - 一次性发送多张图片
+    private func sendPickedImages(_ images: [UIImage]) {
+        guard !images.isEmpty else { return }
+        
+        let cfg = self.currentConfig
+        // 仅允许 qwen3-vl-plus 发送图片
+        guard cfg.modelName.lowercased() == "qwen3-vl-plus" else {
+            self.viewModel.addSystemTip("该模型不支持图片")
+            return
+        }
+
+        let prompt = self.inputBar.textView.text ?? "图中描绘的是什么景象？"
+
+        // 将多张图片合并为一条 message
+        var attachments: [MessageAttachment] = []
+        for img in images {
+            if let data = ImageProcessor.jpegData(from: img, maxKB: 300) {
+                let base64 = data.base64EncodedString()
+                attachments.append(.init(kind: .imageDataURL, value: "data:image/jpeg;base64,\(base64)"))
+            }
+        }
+
+        let userMsg = Message(role: .user, content: prompt, attachments: attachments)
+        
+        // 一次性发送，模型只会回复一次
+        self.viewModel.stream(userMessage: userMsg, config: cfg)
     }
 
     // MARK: - UITableViewDataSource
@@ -149,7 +165,6 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             guard let self else { return }
             self.viewModel.toggleReasoningExpanded(messageID: messageID)
 
-            //  局部刷新这一行（避免整表闪）
             if let row = self.viewModel.messages().firstIndex(where: { $0.id == messageID }) {
                 self.tableView.performBatchUpdates {
                     self.tableView.reloadRows(at: [IndexPath(row: row, section: 0)], with: .fade)
@@ -164,56 +179,52 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
 
 }
 
-// 李相瑜新增：MARK: - 图片选择器回调
+// MARK: - PHPicker Delegate
 extension ChatViewController: PHPickerViewControllerDelegate {
     public func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
-
-        guard let provider = results.first?.itemProvider,
-              provider.canLoadObject(ofClass: UIImage.self) else {
-            return
-        }
-
-        provider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
-            guard let self = self else { return }
-            if let image = object as? UIImage {
-                DispatchQueue.main.async {
-//                    self.viewModel.sendImage(image)
-                    let cfg = self.currentConfig
-//                    cfg.thinking = self.thinkingEnabled
-
-                    // 目前只有qwen3-vl-plus支持图像输入
-                    // 可以在做拦截提示：如果当前是 DeepSeek，就提示“该模型不支持图片”
-                    // prompt应该从用户输入框拿
-                    self.viewModel.sendImage(image, prompt: "图中描绘的是什么景象？", config: cfg)
-
+        
+        var images: [UIImage] = []
+        let group = DispatchGroup()
+        
+        for result in results {
+            let provider = result.itemProvider
+            guard provider.canLoadObject(ofClass: UIImage.self) else { continue }
+            
+            group.enter()
+            provider.loadObject(ofClass: UIImage.self) { object, error in
+                if let img = object as? UIImage {
+                    images.append(img)
                 }
+                group.leave()
             }
+        }
+        
+        // 等待所有图片加载完成后一次性发送
+        group.notify(queue: .main) { [weak self] in
+            guard let self else { return }
+            self.sendPickedImages(images)
         }
     }
 }
 
-// MARK: 模型选择
+
+// MARK: - 模型选择
 extension ChatViewController {
     
     private func setupModelSwitcher() {
-        // 胶囊样式按钮
         var config = UIButton.Configuration.filled()
         config.cornerStyle = .capsule
         config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
         config.imagePlacement = .trailing
         config.imagePadding = 6
         modelButton.configuration = config
-
         modelButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
         modelButton.setImage(UIImage(systemName: "chevron.down"), for: .normal)
-
-        // iOS 14+：点按钮直接弹出菜单
         modelButton.showsMenuAsPrimaryAction = true
         reloadModelOptions()
         rebuildModelMenu()
         updateModelButtonTitle()
-
         navigationItem.rightBarButtonItem = UIBarButtonItem(customView: modelButton)
     }
 
@@ -234,7 +245,6 @@ extension ChatViewController {
         if currentModelIndex >= modelOptions.count { currentModelIndex = 0 }
     }
 
-    
     private func rebuildModelMenu() {
         reloadModelOptions()
         let actions = modelOptions.enumerated().map { idx, opt in
@@ -245,14 +255,12 @@ extension ChatViewController {
         modelButton.menu = UIMenu(title: "选择模型", children: actions)
     }
 
-    
     private func updateModelButtonTitle() {
         guard !modelOptions.isEmpty else { return }
         modelButton.setTitle(modelOptions[currentModelIndex].title, for: .normal)
-        rebuildModelMenu() // 让“对勾”状态刷新
+        rebuildModelMenu()
     }
 
-    
     private func switchModel(to index: Int) {
         guard index != currentModelIndex else { return }
         currentModelIndex = index
@@ -260,32 +268,24 @@ extension ChatViewController {
             viewModel.addSystemTip("已切换到：\(modelOptions[index].title)")
         }
     }
-
 }
 
-
-// MARK: 切换思考模式
+// MARK: - 思考模式切换
 extension ChatViewController {
     
     private func setupThinkingToggle() {
         thinkingButton.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(thinkingButton)
-
-        // 样式：小胶囊
         var cfg = UIButton.Configuration.filled()
         cfg.cornerStyle = .capsule
         cfg.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
         cfg.imagePadding = 6
         thinkingButton.configuration = cfg
         thinkingButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
-
         thinkingButton.addTarget(self, action: #selector(didTapThinkingToggle), for: .touchUpInside)
-
-        // 初始值：与当前模型的 config.thinking 对齐（为空时使用默认）
         thinkingEnabled = currentConfig.thinking
 
         NSLayoutConstraint.activate([
-            // 放在 inputBar 上方，左下角位置（你也可以放右侧）
             thinkingButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             thinkingButton.bottomAnchor.constraint(equalTo: inputBar.topAnchor, constant: -8),
             thinkingButton.heightAnchor.constraint(equalToConstant: 28)
@@ -294,25 +294,19 @@ extension ChatViewController {
 
     @objc private func didTapThinkingToggle() {
         thinkingEnabled.toggle()
-
-        // 你也可以提示一下（你工程里已有 system tip）
         Task { @MainActor in
             viewModel.addSystemTip(thinkingEnabled ? "已开启思考模式" : "已关闭思考模式")
         }
     }
 
     private func updateThinkingButtonUI() {
-        // 这里用“brain”图标 + 文案，开关态一眼能看出
         let title = thinkingEnabled ? "思考：开" : "思考：关"
         let imageName = thinkingEnabled ? "brain.head.profile" : "brain"
         thinkingButton.setTitle(title, for: .normal)
         thinkingButton.setImage(UIImage(systemName: imageName), for: .normal)
-
-        // 轻微区分一下状态（不想改颜色也行）
         if #available(iOS 15.0, *) {
             thinkingButton.configuration?.baseBackgroundColor = thinkingEnabled ? .systemGreen : .tertiarySystemFill
             thinkingButton.configuration?.baseForegroundColor = thinkingEnabled ? .white : .label
         }
     }
-
 }

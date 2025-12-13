@@ -38,7 +38,7 @@ public final class ChatViewModel {
     }
     
     /// 李相瑜新增：方法 — 发送图片消息
-    public func sendImage(_ image: UIImage) {
+    public func sendImageMock(_ image: UIImage) {
         Task {
             //如果你有图片压缩工具，可在这里使用，比如ImageProcessor.jpegData(...)
             // For now, 只是模拟流程
@@ -61,52 +61,37 @@ public final class ChatViewModel {
     
     // MARK: 图片
     // 由于没有服务器，所以我们上传图片选择Base64编码方式上传
-    public func sendImage(_ image: UIImage, prompt: String = "图中描绘的是什么景象？", config: AIModelConfig) {
-        Task {
-            guard let data = ImageProcessor.jpegData(from: image, maxKB: 300) else {
-                await MainActor.run { self.addSystemTip("图片压缩失败") }
-                return
-            }
-            let base64 = data.base64EncodedString()
-            let dataURL = "data:image/jpeg;base64,\(base64)"
-
-            let userMsg = Message(
-                role: .user,
-                content: prompt,
-                attachments: [.init(kind: .imageDataURL, value: dataURL)]
-            )
-            self.stream(userMessage: userMsg, config: config)
+    public func sendImage(_ image: UIImage, prompt: String, config: AIModelConfig) {
+        guard let data = ImageProcessor.jpegData(from: image, maxKB: 300) else {
+            Task { @MainActor in self.addSystemTip("图片压缩失败") }
+            return
         }
+        let base64 = data.base64EncodedString()
+        let dataURL = "data:image/jpeg;base64,\(base64)"
+
+        let userMsg = Message(
+            role: .user,
+            content: prompt,
+            attachments: [.init(kind: .imageDataURL, value: dataURL)]
+        )
+        stream(userMessage: userMsg, config: config) // 直接调用 stream，不再嵌套 Task
     }
     
     // MARK: - 统一入口（文本/图片都走这里）
-    private func stream(userMessage: Message, config: AIModelConfig) {
-        print("VM stream start user role:", userMessage.role.rawValue, "contentLen:", userMessage.content.count)
-        print("VM config provider:", config.provider.rawValue, "model:", config.modelName, "baseURL:", config.baseURL ?? "nil", "apiKey:", (config.apiKey?.isEmpty == false), "thinking:", config.thinking, "tokenLimit:", config.tokenLimit)
-        // 1) 启动 usecase stream（它会 append user message 到 repo）
-        let s = sendUseCase.stream(session: session, userMessage: userMessage, config: config)
-
-        // 2) 触发一次刷新，让 UI 看到 user message
-        if let last = repository.fetchMessages(sessionID: session.id).last {
-            onNewMessage?(last)
-        } else {
-            onNewMessage?(Message(role: .system, content: ""))
-        }
-
-        // 3) 插入 assistant 占位消息
+    public func stream(userMessage: Message, config: AIModelConfig) {
+        repository.appendMessage(sessionID: session.id, message: userMessage)
+        onNewMessage?(userMessage)
+        
         let assistantID = UUID()
-        repository.appendMessage(sessionID: session.id,
-                                 message: Message(id: assistantID, role: .assistant, content: "", reasoning: nil))
-        if let appended = repository.fetchMessages(sessionID: session.id).last {
-            onNewMessage?(appended)
-        }
-
-        // 4) 逐 token 合并
-        Task {
-            var contentBuffer = ""
-            var reasoningBuffer = ""
-            for await m in s {
-                print("VM stream token role:", m.role.rawValue, "contentLen:", m.content.count, "reasoningLen:", m.reasoning?.count ?? 0)
+        let placeholder = Message(id: assistantID, role: .assistant, content: "", reasoning: nil)
+        repository.appendMessage(sessionID: session.id, message: placeholder)
+        onNewMessage?(placeholder)
+        
+        let stream = sendUseCase.stream(session: session, userMessage: userMessage, config: config)
+        var contentBuffer = ""
+        var reasoningBuffer = ""
+        Task {  // 只包裹 for await
+            for await m in stream {
                 if let r = m.reasoning {
                     reasoningBuffer += r
                     repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
@@ -114,7 +99,6 @@ public final class ChatViewModel {
                     contentBuffer += m.content
                     repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
                 }
-
                 if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
                     onNewMessage?(updated)
                 } else {
@@ -123,7 +107,7 @@ public final class ChatViewModel {
             }
         }
     }
-
+    
     // MARK: - 文本：保持现有行为
     public func stream(text: String, config: AIModelConfig) {
         stream(userMessage: Message(role: .user, content: text), config: config)
