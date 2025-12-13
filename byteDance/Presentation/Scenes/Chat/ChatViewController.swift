@@ -102,12 +102,18 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             tableView.bottomAnchor.constraint(equalTo: inputBar.topAnchor)
         ])
         
-        // 文本发送
+        // MARK: - 文本发送
         inputBar.onSend = { [weak self] text in
-            guard let self else { return }
-            var cfg = self.currentConfig
-            cfg.thinking = self.thinkingEnabled
-            self.viewModel.stream(text: text, config: cfg)
+            guard let self = self, !text.isEmpty else { return }
+
+            let cfg = self.currentConfig
+            let userMsg = Message(role: .user, content: text)
+
+            // 调用原始 stream
+            self.viewModel.stream(userMessage: userMsg, config: cfg)
+
+            // 清空输入框
+            self.inputBar.textView.text = ""
         }
 
         // 图片按钮点击 -> 弹出 PHPicker 支持多选
@@ -123,31 +129,38 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     }
 
     // MARK: - 一次性发送多张图片
+    // MARK: - 一次性发送多张图片
     private func sendPickedImages(_ images: [UIImage]) {
         guard !images.isEmpty else { return }
-        
+
         let cfg = self.currentConfig
-        // 仅允许 qwen3-vl-plus 发送图片
+
+        // 仅允许 qwen3-vl-plus
         guard cfg.modelName.lowercased() == "qwen3-vl-plus" else {
             self.viewModel.addSystemTip("该模型不支持图片")
             return
         }
 
-        let prompt = self.inputBar.textView.text ?? "图中描绘的是什么景象？"
+        // 使用输入框文本作为提示词，如果为空使用默认
+        let prompt = self.inputBar.textView.text.isEmpty ? "图中描绘的是什么景象？" : self.inputBar.textView.text!
 
-        // 将多张图片合并为一条 message
+        // 构造 attachments
         var attachments: [MessageAttachment] = []
         for img in images {
             if let data = ImageProcessor.jpegData(from: img, maxKB: 300) {
-                let base64 = data.base64EncodedString()
-                attachments.append(.init(kind: .imageDataURL, value: "data:image/jpeg;base64,\(base64)"))
+                attachments.append(.init(kind: .imageDataURL,
+                                         value: "data:image/jpeg;base64,\(data.base64EncodedString())"))
             }
         }
 
+        // 构造用户消息
         let userMsg = Message(role: .user, content: prompt, attachments: attachments)
-        
-        // 一次性发送，模型只会回复一次
+
+        // 调用原始 stream(userMessage:) → 保持原版 append 逻辑
         self.viewModel.stream(userMessage: userMsg, config: cfg)
+
+        // 发送后清空输入框
+        self.inputBar.textView.text = ""
     }
 
     // MARK: - UITableViewDataSource
@@ -183,14 +196,14 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
 extension ChatViewController: PHPickerViewControllerDelegate {
     public func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
-        
+
         var images: [UIImage] = []
         let group = DispatchGroup()
-        
+
         for result in results {
             let provider = result.itemProvider
             guard provider.canLoadObject(ofClass: UIImage.self) else { continue }
-            
+
             group.enter()
             provider.loadObject(ofClass: UIImage.self) { object, error in
                 if let img = object as? UIImage {
@@ -199,10 +212,10 @@ extension ChatViewController: PHPickerViewControllerDelegate {
                 group.leave()
             }
         }
-        
+
         // 等待所有图片加载完成后一次性发送
         group.notify(queue: .main) { [weak self] in
-            guard let self else { return }
+            guard let self = self, !images.isEmpty else { return }
             self.sendPickedImages(images)
         }
     }

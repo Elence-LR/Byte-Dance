@@ -79,19 +79,27 @@ public final class ChatViewModel {
     
     // MARK: - 统一入口（文本/图片都走这里）
     public func stream(userMessage: Message, config: AIModelConfig) {
-        repository.appendMessage(sessionID: session.id, message: userMessage)
-        onNewMessage?(userMessage)
-        
+        // 原始 append 用户消息
+        let s = sendUseCase.stream(session: session, userMessage: userMessage, config: config)
+
+        if let last = repository.fetchMessages(sessionID: session.id).last {
+            onNewMessage?(last)
+        } else {
+            onNewMessage?(Message(role: .system, content: ""))
+        }
+
         let assistantID = UUID()
-        let placeholder = Message(id: assistantID, role: .assistant, content: "", reasoning: nil)
-        repository.appendMessage(sessionID: session.id, message: placeholder)
-        onNewMessage?(placeholder)
-        
-        let stream = sendUseCase.stream(session: session, userMessage: userMessage, config: config)
-        var contentBuffer = ""
-        var reasoningBuffer = ""
-        Task {  // 只包裹 for await
-            for await m in stream {
+        repository.appendMessage(sessionID: session.id,
+                                 message: Message(id: assistantID, role: .assistant, content: "", reasoning: nil))
+        if let appended = repository.fetchMessages(sessionID: session.id).last {
+            onNewMessage?(appended)
+        }
+
+        // 逐 token 更新 assistant 占位消息
+        Task {
+            var contentBuffer = ""
+            var reasoningBuffer = ""
+            for await m in s {
                 if let r = m.reasoning {
                     reasoningBuffer += r
                     repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
@@ -99,6 +107,7 @@ public final class ChatViewModel {
                     contentBuffer += m.content
                     repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
                 }
+
                 if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
                     onNewMessage?(updated)
                 } else {
