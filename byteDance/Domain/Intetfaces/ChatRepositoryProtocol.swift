@@ -15,4 +15,7 @@ public protocol ChatRepositoryProtocol {
     func fetchMessages(sessionID: UUID) -> [Message]
     func updateMessageContent(sessionID: UUID, messageID: UUID, content: String)
     func updateMessageReasoning(sessionID: UUID, messageID: UUID, reasoning: String)
+    //新增
+    func saveSessions(_ sessions: [Session])  // 保存会话列表（含状态）
+    func setCurrentSession(id: UUID)          // 标记当前会话
 }
