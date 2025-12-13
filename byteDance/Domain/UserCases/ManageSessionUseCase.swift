@@ -20,8 +20,13 @@ public final class ManageSessionUseCase {
     public func sessions() -> [Session] {
         repository.fetchSessions()
     }
-    
+
+    public func deleteSession(id: UUID) {    //新增会话删除
+        repository.deleteSession(id: id)
+    }
+    public func rename(id: UUID, title: String) {
+        repository.renameSession(id: id, title: title)
+    }
     // 桩代码，仅用于满足协议
-    public func rename(id: UUID, title: String) {}
     public func archive(id: UUID) {}
 }
