@@ -28,10 +28,11 @@ public final class ChatRepository: ChatRepositoryProtocol {
         return newSession
     }
     
+    // 重命名会话
     public func renameSession(id: UUID, title: String) {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         sessions[index].title = title
-        saveSessions(sessions)  // 同步到本地
+        saveSessions(sessions) // 同步到本地存储
     }
     
     public func archiveSession(id: UUID) {
@@ -67,7 +68,12 @@ public final class ChatRepository: ChatRepositoryProtocol {
         saveSessions(sessions)  // 同步到本地
         print("Repo update reasoning len:", reasoning.count)
     }
-    
+    // 新增：删除会话
+    public func deleteSession(id: UUID) {
+        sessions.removeAll { $0.id == id }
+        saveSessions(sessions) // 同步到本地存储
+    }
+       
     // MARK: - 新增：状态管理方法（实现协议）
     
     // 保存会话列表到本地
