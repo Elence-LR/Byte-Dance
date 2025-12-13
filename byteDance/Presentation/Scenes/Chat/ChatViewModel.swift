@@ -38,7 +38,7 @@ public final class ChatViewModel {
     }
     
     /// 李相瑜新增：方法 — 发送图片消息
-    public func sendImageMock(_ image: UIImage) {
+    public func sendImage(_ image: UIImage) {
         Task {
             //如果你有图片压缩工具，可在这里使用，比如ImageProcessor.jpegData(...)
             // For now, 只是模拟流程
@@ -61,20 +61,22 @@ public final class ChatViewModel {
     
     // MARK: 图片
     // 由于没有服务器，所以我们上传图片选择Base64编码方式上传
-    public func sendImage(_ image: UIImage, prompt: String, config: AIModelConfig) {
-        guard let data = ImageProcessor.jpegData(from: image, maxKB: 300) else {
-            Task { @MainActor in self.addSystemTip("图片压缩失败") }
-            return
-        }
-        let base64 = data.base64EncodedString()
-        let dataURL = "data:image/jpeg;base64,\(base64)"
+    public func sendImage(_ image: UIImage, prompt: String = "图中描绘的是什么景象？", config: AIModelConfig) {
+        Task {
+            guard let data = ImageProcessor.jpegData(from: image, maxKB: 300) else {
+                await MainActor.run { self.addSystemTip("图片压缩失败") }
+                return
+            }
+            let base64 = data.base64EncodedString()
+            let dataURL = "data:image/jpeg;base64,\(base64)"
 
-        let userMsg = Message(
-            role: .user,
-            content: prompt,
-            attachments: [.init(kind: .imageDataURL, value: dataURL)]
-        )
-        stream(userMessage: userMsg, config: config) // 直接调用 stream，不再嵌套 Task
+            let userMsg = Message(
+                role: .user,
+                content: prompt,
+                attachments: [.init(kind: .imageDataURL, value: dataURL)]
+            )
+            self.stream(userMessage: userMsg, config: config)
+        }
     }
     
     // MARK: - 统一入口（文本/图片都走这里）
@@ -117,6 +119,7 @@ public final class ChatViewModel {
         }
     }
     
+
     // MARK: - 文本：保持现有行为
     public func stream(text: String, config: AIModelConfig) {
         stream(userMessage: Message(role: .user, content: text), config: config)
@@ -146,3 +149,4 @@ public final class ChatViewModel {
         reasoningExpanded[messageID] = !(reasoningExpanded[messageID] ?? false)
     }
 }
+
