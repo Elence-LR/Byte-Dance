@@ -24,17 +24,21 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
 
 
     public override func viewDidLoad() {
-        super.viewDidLoad()
-        title = NSLocalizedString("Sessions", comment: "")
-        setupTable()
-        
-        // ⭐️ 关键修复：延迟设置导航栏按钮，解决约束冲突
-        DispatchQueue.main.async {
-            self.navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(self.addTapped))
-            let settingsButton = UIBarButtonItem(title: NSLocalizedString("Settings", comment: ""), style: .plain, target: self, action: #selector(self.settingsTapped))
-            self.navigationItem.leftBarButtonItem = settingsButton
-        }
-    }
+           super.viewDidLoad()
+           title = NSLocalizedString("Sessions", comment: "")
+           setupTable()
+           
+           // 延迟设置导航栏按钮，解决约束冲突
+           DispatchQueue.main.async {
+               self.navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(self.addTapped))
+               let settingsButton = UIBarButtonItem(title: NSLocalizedString("Settings", comment: ""), style: .plain, target: self, action: #selector(self.settingsTapped))
+               self.navigationItem.leftBarButtonItem = settingsButton
+           }
+           
+           // 注册长按手势
+           let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+           tableView.addGestureRecognizer(longPress)
+       }
 
     private func setupTable() {
         tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -59,12 +63,116 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
         // 导航到 ChatViewController
         navigateToChat(session: newSession)
     }
-    
+
     @objc private func settingsTapped() {
         let vc = SettingsViewController()
         navigationController?.pushViewController(vc, animated: true)
     }
-    
+    // MARK: - 会话处理
+     @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+         guard gesture.state == .began else { return }
+         
+         let point = gesture.location(in: tableView)
+         guard let indexPath = tableView.indexPathForRow(at: point) else { return }
+         
+         let session = manage.sessions()[indexPath.row]
+         showSessionActions(session: session, indexPath: indexPath)
+     }
+     
+     // 显示会话操作菜单
+     private func showSessionActions(session: Session, indexPath: IndexPath) {
+         let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+         
+         // 重命名会话
+         alert.addAction(UIAlertAction(title: NSLocalizedString("Rename", comment: ""), style: .default) { [weak self] _ in
+             self?.renameSession(session: session, indexPath: indexPath)
+         })
+         
+         // 删除会话
+         alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { [weak self] _ in
+             self?.deleteSession(session: session, indexPath: indexPath)
+         })
+         
+         // 取消
+         alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+         
+         present(alert, animated: true)
+     }
+     
+     // 重命名会话
+     private func renameSession(session: Session, indexPath: IndexPath) {
+         let alert = UIAlertController(title: NSLocalizedString("Rename Session", comment: ""), message: nil, preferredStyle: .alert)
+         alert.addTextField { textField in
+             textField.text = session.title
+             textField.placeholder = NSLocalizedString("Enter new name", comment: "")
+         }
+         
+         alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+         alert.addAction(UIAlertAction(title: NSLocalizedString("Save", comment: ""), style: .default) { [weak self] _ in
+             guard let self = self,
+                   let newTitle = alert.textFields?.first?.text,
+                   !newTitle.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+             
+             // 更新会话标题
+             self.manage.rename(id: session.id, title: newTitle)
+             self.tableView.reloadRows(at: [indexPath], with: .automatic)
+         })
+         
+         present(alert, animated: true)
+     }
+     
+     // 删除会话
+     private func deleteSession(session: Session, indexPath: IndexPath) {
+         let alert = UIAlertController(
+             title: NSLocalizedString("Delete Session", comment: ""),
+             message: NSLocalizedString("Are you sure you want to delete this session?", comment: ""),
+             preferredStyle: .alert
+         )
+         
+         alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+         alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { [weak self] _ in
+             guard let self = self else { return }
+             
+             // 删除会话
+             self.manage.deleteSession(id: session.id)
+             self.tableView.deleteRows(at: [indexPath], with: .automatic)
+         })
+         
+         present(alert, animated: true)
+     }
+
+     // MARK: - UITableViewDelegate (侧滑删除)
+     public func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+         let deleteAction = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { [weak self] (_, _, completion) in
+             guard let self = self else {
+                 completion(false)
+                 return
+             }
+             
+             let session = self.manage.sessions()[indexPath.row]
+             self.deleteSession(session: session, indexPath: indexPath)
+             completion(true)
+         }
+         
+         let renameAction = UIContextualAction(style: .normal, title: NSLocalizedString("Rename", comment: "")) { [weak self] (_, _, completion) in
+             guard let self = self else {
+                 completion(false)
+                 return
+             }
+             
+             let session = self.manage.sessions()[indexPath.row]
+             self.renameSession(session: session, indexPath: indexPath)
+             completion(true)
+         }
+         renameAction.backgroundColor = .systemBlue
+         
+         return UISwipeActionsConfiguration(actions: [deleteAction, renameAction])
+     }
+     
+     // 支持滑动删除
+     public func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+         return true
+     }
     private func navigateToChat(session: Session) {
         let sendUseCase = SendMessageUseCase(repository: repository, service: llmService)
         let vm = ChatViewModel(session: session, sendUseCase: sendUseCase, repository: repository)
