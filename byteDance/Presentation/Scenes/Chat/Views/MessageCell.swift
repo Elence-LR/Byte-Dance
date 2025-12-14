@@ -26,6 +26,10 @@ public final class MessageCell: UITableViewCell {
     private var centerConstraint: NSLayoutConstraint!
 
     private let maxBubbleWidthRatio: CGFloat = 0.78
+    
+    private let regenerateButton = UIButton(type: .system)
+    public var onRegenerate: ((UUID) -> Void)?
+
 
     public override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -113,6 +117,10 @@ public final class MessageCell: UITableViewCell {
         rightTrailing.isActive = false
         rightLeadingMin.isActive = false
         centerConstraint.isActive = false
+        
+        regenerateButton.setImage(UIImage(systemName: "arrow.clockwise"), for: .normal)
+        regenerateButton.addTarget(self, action: #selector(didTapRegenerate), for: .touchUpInside)
+        regenerateButton.tintColor = .secondaryLabel
     }
 
     public override func prepareForReuse() {
@@ -132,6 +140,9 @@ public final class MessageCell: UITableViewCell {
         centerConstraint.isActive = false
 
         bubbleView.backgroundColor = .secondarySystemBackground
+        
+        onRegenerate = nil
+        regenerateButton.isHidden = true
     }
 
     @objc private func didTapReasoning() {
@@ -139,10 +150,29 @@ public final class MessageCell: UITableViewCell {
         onToggleReasoning?(id)
     }
 
-    public func configure(with message: Message, isReasoningExpanded: Bool) {
+    public func configure(with message: Message, isReasoningExpanded: Bool, showRegenerate: Bool) {
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         currentMessageID = message.id
+        
+        if message.role == .assistant, showRegenerate {
+            let header = UIStackView()
+            header.axis = .horizontal
+            header.alignment = .center
 
+            let spacer = UIView()
+            header.addArrangedSubview(spacer)
+
+            // 关键：同一个按钮反复被添加到不同 header 前，要先 remove
+            regenerateButton.removeFromSuperview()
+            regenerateButton.isHidden = false
+            header.addArrangedSubview(regenerateButton)
+
+            contentStack.addArrangedSubview(header)
+        } else {
+            regenerateButton.isHidden = true
+            regenerateButton.removeFromSuperview() // 可选：避免残留在旧 header
+        }
+        
         // Reasoning
         if message.role == .assistant,
            let reasoning = message.reasoning,
@@ -578,5 +608,10 @@ public final class MessageCell: UITableViewCell {
         }
 
         required init?(coder: NSCoder) { super.init(coder: coder) }
+    }
+    
+    @objc private func didTapRegenerate() {
+        guard let id = currentMessageID else { return }
+        onRegenerate?(id)
     }
 }

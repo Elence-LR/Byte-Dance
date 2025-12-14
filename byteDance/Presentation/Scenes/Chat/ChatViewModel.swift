@@ -16,17 +16,40 @@ public final class ChatViewModel {
     public var onNewMessage: ((Message) -> Void)?
     private var reasoningExpanded: [UUID: Bool] = [:]
     private var currentStreamTask: Task<Void, Never>?
+    private var currentAssistantID: UUID?
+    private var regeneratableAssistantIDs: Set<UUID> = []
+    
+    // 草稿相关属性
+    public private(set) var currentDraft: String = "" {
+        didSet {
+            // 实时保存草稿
+            saveDraft()
+        }
+    }
+    private let draftKey: String
     
     public private(set) var isStreaming: Bool = false {
         didSet { onStreamingStateChanged?(isStreaming) }
     }
     
     public var onStreamingStateChanged: ((Bool) -> Void)?
+    // 草稿更新回调
+    public var onDraftUpdated: ((String) -> Void)?
 
     public func cancelCurrentStream() {
+        if let id = currentAssistantID {
+            regeneratableAssistantIDs.insert(id)
+        }
+
         currentStreamTask?.cancel()
         currentStreamTask = nil
         isStreaming = false
+
+        // 关键：刷新被 stop 的 assistant 行，让“重试按钮”立刻出现
+        if let id = currentAssistantID {
+            notifyAssistantUpdated(id)
+        }
+
         Task { @MainActor in
             self.addSystemTip(ChatError.cancelled.userMessage)
         }
@@ -37,9 +60,42 @@ public final class ChatViewModel {
         self.session = session
         self.sendUseCase = sendUseCase
         self.repository = repository
+        // 初始化草稿存储键（基于会话ID）
+        self.draftKey = "draft_\(session.id.uuidString)"
+        // 加载已保存的草稿
+        loadDraft()
+    }
+    
+    // 加载草稿
+    private func loadDraft() {
+        if let savedDraft = UserDefaults.standard.string(forKey: draftKey) {
+            currentDraft = savedDraft
+            onDraftUpdated?(currentDraft)
+        }
+    }
+    
+    // 保存草稿
+    private func saveDraft() {
+        UserDefaults.standard.set(currentDraft, forKey: draftKey)
+    }
+    
+    // 更新草稿内容
+    public func updateDraft(_ text: String) {
+        currentDraft = text
+        onDraftUpdated?(text)
+    }
+    
+    // 清空草稿
+    public func clearDraft() {
+        currentDraft = ""
+        UserDefaults.standard.removeObject(forKey: draftKey)
+        onDraftUpdated?("")
     }
 
     public func send(text: String, config: AIModelConfig) {
+        // 发送消息时清空草稿
+        clearDraft()
+        
         // 仅在本地记录消息，不真正发送
         Task {
             let userMessage = Message(role: .user, content: text, reasoning: nil)
@@ -103,10 +159,8 @@ public final class ChatViewModel {
 
         let s = sendUseCase.stream(session: session, userMessage: userMessage, config: config)
 
-        // append 用户消息 & assistant 占位（你们现有逻辑保留）
-        // ...（保持你现在 L26-L42 的 append）:contentReference[oaicite:11]{index=11}
-
         let assistantID = UUID()
+        currentAssistantID = assistantID
         repository.appendMessage(sessionID: session.id,
                                  message: Message(id: assistantID, role: .assistant, content: "", reasoning: nil))
         if let appended = repository.fetchMessages(sessionID: session.id).last {
@@ -139,17 +193,22 @@ public final class ChatViewModel {
                     }
                 }
 
-                // 正常结束
+                // 正常结束：先结束流，再标记可重试，再刷新一次（让按钮出现）
                 isStreaming = false
                 currentStreamTask = nil
+                regeneratableAssistantIDs.insert(assistantID)
+                notifyAssistantUpdated(assistantID)
 
             } catch {
                 isStreaming = false
                 currentStreamTask = nil
 
+                // 失败/取消都允许重试，并刷新一次
+                regeneratableAssistantIDs.insert(assistantID)
+                notifyAssistantUpdated(assistantID)
+
                 let mapped = ErrorMapper.map(error)
                 await MainActor.run {
-                    // ✅ 取消不当作失败（你也可以不提示，只改 UI 状态）
                     if mapped != .cancelled {
                         self.addSystemTip(mapped.userMessage)
                     }
@@ -164,7 +223,6 @@ public final class ChatViewModel {
         stream(userMessage: Message(role: .user, content: text), config: config)
     }
     
-
     
     public func messages() -> [Message] {
         repository.fetchMessages(sessionID: session.id)
@@ -187,5 +245,79 @@ public final class ChatViewModel {
     public func toggleReasoningExpanded(messageID: UUID) {
         reasoningExpanded[messageID] = !(reasoningExpanded[messageID] ?? false)
     }
-}
+    
+    
+    public func canRegenerate(messageID: UUID) -> Bool {
+        return regeneratableAssistantIDs.contains(messageID) && !isStreaming
+    }
 
+    public func regenerate(assistantMessageID: UUID, config: AIModelConfig) {
+        // 若正在流，先停掉当前流（避免并发）
+        if isStreaming { cancelCurrentStream() }
+
+        let all = repository.fetchMessages(sessionID: session.id)
+
+        guard let assistantIndex = all.firstIndex(where: { $0.id == assistantMessageID }) else { return }
+
+        // 找到该 assistant 前面最近的一条 user
+        guard let userIndex = all[..<assistantIndex].lastIndex(where: { $0.role == .user }) else { return }
+
+        // 关键：上下文只取到那条 user 为止，不把旧 assistant 回复喂回去
+        let contextMessages = Array(all[...userIndex])
+
+        // 清空这个 assistant 气泡内容，复用同一个 cell
+        repository.updateMessageContent(sessionID: session.id, messageID: assistantMessageID, content: "")
+        repository.updateMessageReasoning(sessionID: session.id, messageID: assistantMessageID, reasoning: "")
+
+        currentAssistantID = assistantMessageID
+        isStreaming = true
+
+        let s = sendUseCase.stream(session: session, messages: contextMessages, config: config)
+
+        currentStreamTask = Task {
+            var contentBuffer = ""
+            var reasoningBuffer = ""
+
+            do {
+                for try await m in s {
+                    if Task.isCancelled { throw CancellationError() }
+
+                    if let r = m.reasoning {
+                        reasoningBuffer += r
+                        repository.updateMessageReasoning(sessionID: session.id, messageID: assistantMessageID, reasoning: reasoningBuffer)
+                    } else {
+                        contentBuffer += m.content
+                        repository.updateMessageContent(sessionID: session.id, messageID: assistantMessageID, content: contentBuffer)
+                    }
+
+                    if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantMessageID }) {
+                        onNewMessage?(updated)
+                    }
+                }
+
+                isStreaming = false
+                currentStreamTask = nil
+                regeneratableAssistantIDs.insert(assistantMessageID)
+
+            } catch {
+                isStreaming = false
+                currentStreamTask = nil
+                regeneratableAssistantIDs.insert(assistantMessageID)
+
+                let mapped = ErrorMapper.map(error)
+                await MainActor.run {
+                    if mapped != .cancelled {
+                        self.addSystemTip(mapped.userMessage)
+                    }
+                }
+            }
+        }
+    }
+    
+    
+    private func notifyAssistantUpdated(_ id: UUID) {
+        if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == id }) {
+            onNewMessage?(updated)
+        }
+    }
+}

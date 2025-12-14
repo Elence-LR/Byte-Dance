@@ -46,5 +46,16 @@ public final class SendMessageUseCase {
     public func stream(session: Session, userText: String, config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
         stream(session: session, userMessage: Message(role: .user, content: userText), config: config)
     }
+    
+    
+    // 新增：用于“重试生成”——不 append userMessage，直接用传入的 messages 发起流式请求
+    public func stream(session: Session, messages: [Message], config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
+        return service.streamMessage(
+            sessionID: session.id,
+            messages: messages,
+            config: config
+        )
+    }
+
 }
 

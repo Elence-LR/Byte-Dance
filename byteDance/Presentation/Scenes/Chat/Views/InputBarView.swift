@@ -5,6 +5,7 @@
 //  Created by 刘锐 on 2025/12/4.
 //
 import UIKit
+import Foundation
 
 public final class InputBarView: UIView, UITextViewDelegate {
     public enum Mode {
@@ -23,22 +24,25 @@ public final class InputBarView: UIView, UITextViewDelegate {
         didSet { updateSendButtonUI() }
     }
     
-    public func setMode(_ mode: Mode) {
-        self.mode = mode
-    }
-
     private var textViewHeightConstraint: NSLayoutConstraint?
     private let minInputHeight: CGFloat = 36
     private let maxInputHeight: CGFloat = 120
+    
+    // 草稿功能新增属性
+    private let draftStorage = DraftStorage()
+    private var currentSessionID: UUID!
+    private var draftTimer: Timer?
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
         setup()
+        setupDraftLogic() // 初始化草稿相关逻辑
     }
 
     public required init?(coder: NSCoder) {
         super.init(coder: coder)
         setup()
+        setupDraftLogic() // 初始化草稿相关逻辑
     }
 
     private func setup() {
@@ -92,6 +96,7 @@ public final class InputBarView: UIView, UITextViewDelegate {
             guard !text.isEmpty else { return }
             print("InputBar sendTapped length:", text.count)
             onSend?(text)
+            clearDraft() // 发送成功后清空草稿
             textView.text = ""
             updateTextViewHeight()
 
@@ -109,6 +114,7 @@ public final class InputBarView: UIView, UITextViewDelegate {
 
     public func textViewDidChange(_ textView: UITextView) {
         updateTextViewHeight()
+        saveDraftDelayed()
     }
 
     private func updateTextViewHeight() {
@@ -136,5 +142,45 @@ public final class InputBarView: UIView, UITextViewDelegate {
             imageButton.isEnabled = false
             textView.isEditable = false
         }
+    }
+    
+    public func setMode(_ mode: Mode) {
+        self.mode = mode
+    }
+    
+    // 草稿功能新增逻辑
+    private func setupDraftLogic() {
+        // 草稿功能初始化（如果需要额外配置可在此添加）
+    }
+    
+    // 绑定会话ID并加载草稿
+    public func bind(to sessionID: UUID) {
+        self.currentSessionID = sessionID
+        // 加载该会话的草稿
+        if let draft = draftStorage.load(for: sessionID) {
+            textView.text = draft.text
+            updateTextViewHeight() // 恢复草稿后调整输入框高度
+        }
+    }
+    
+    // 延迟保存草稿（避免频繁写入）
+    private func saveDraftDelayed() {
+        draftTimer?.invalidate()
+        draftTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            guard let self = self, let sessionID = self.currentSessionID else { return }
+            let draft = ChatDraft(
+                sessionID: sessionID,
+                text: self.textView.text,
+                imageData: nil,
+                updatedAt: Date()
+            )
+            self.draftStorage.save(draft: draft)
+        }
+    }
+    
+    // 清空当前会话的草稿
+    public func clearDraft() {
+        guard let sessionID = currentSessionID else { return }
+        draftStorage.clear(for: sessionID)
     }
 }
