@@ -18,6 +18,10 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     private var inputBarBottomConstraint: NSLayoutConstraint!
     private var renderedMessageCount: Int = 0  // 优化消息刷新用
     
+    // 语音输入
+    private lazy var speechBridge = SpeechInputBridge(chatViewModel: viewModel)
+
+    
     // 模型选择
     fileprivate struct ModelOption {
         let title: String
@@ -134,6 +138,13 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
                     self.tableView.scrollToRow(at: lastIP, at: .bottom, animated: true)
                 }
             }
+            
+            viewModel.onDraftUpdated = { [weak self] text in
+                DispatchQueue.main.async {
+                    self?.inputBar.textView.text = text
+                }
+            }
+            
         }
         
         viewModel.onStreamingStateChanged = { [weak self] streaming in
@@ -462,4 +473,38 @@ extension ChatViewController {
         super.touchesBegan(touches, with: event)
         view.endEditing(true)
     }
+}
+
+
+
+extension ChatViewController {
+    func asrStart(asrApiKey: String) {
+        let asrCfg = ASRConfig(
+            apiKey: asrApiKey,
+            region: .singaporeIntl, // or .beijing
+            model: "qwen3-asr-flash-realtime",
+            language: "zh",
+            inputAudioFormat: "pcm",
+            inputSampleRate: 16000,
+            enableVAD: true
+        )
+
+        // 聊天模型 config：用 ChatViewController 当前选择的模型（currentConfig）
+        var chatCfg = self.currentConfig
+        chatCfg.thinking = self.thinkingEnabled
+
+        speechBridge.start(asrConfig: asrCfg, chatConfig: chatCfg)
+
+    }
+
+
+    func asrPushChunk(_ chunk: Data) {
+        speechBridge.pushAudioChunk(chunk)
+    }
+
+    func asrStop() {
+        // enableVAD=true => needCommit = false
+        speechBridge.stop(needCommit: false)
+    }
+
 }

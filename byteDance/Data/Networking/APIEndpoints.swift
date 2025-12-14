@@ -46,4 +46,21 @@ public enum APIEndpoints {
         }
         return h
     }
+    
+    
+    // MARK: - Realtime ASR
+    public static func dashScopeRealtimeASRURL(region: ASRConfig.Region, model: String) -> URL {
+        let base = (region == .beijing)
+            ? "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+            : "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime"
+        return URL(string: "\(base)?model=\(model)")!
+    }
+
+    public static func dashScopeRealtimeASRHeaders(apiKey: String) -> [String: String] {
+        [
+            "Authorization": "Bearer \(apiKey)",
+            "OpenAI-Beta": "realtime=v1"
+        ]
+    }
+
 }

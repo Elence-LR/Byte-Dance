@@ -322,5 +322,22 @@ public final class ChatViewModel {
             onNewMessage?(updated)
         }
     }
+    
+    
+    // 1) ASR partial -> 只更新草稿（不发送）
+    @MainActor
+    public func updateDraftFromASR(_ text: String) {
+        updateDraft(text) // 复用已有草稿逻辑
+    }
+
+    // 2) ASR final -> 清草稿 + 走你现有 stream 发送
+    @MainActor
+    public func commitASRFinalAndStream(_ text: String, config: AIModelConfig) {
+        clearDraft()       // 复用已有清草稿逻辑
+        stream(text: text, config: config) // 走现有文本入口
+    }
+    
+    
+
 
 }
