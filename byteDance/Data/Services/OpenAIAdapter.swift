@@ -92,7 +92,7 @@ public final class OpenAIAdapter: LLMServiceProtocol {
         let messages: [Message]
         let config: AIModelConfig
     }
-}
+    
     private func normalizedOpenAIURL(config: AIModelConfig) -> URL {
         if let base = config.baseURL, !base.isEmpty {
             if base.hasSuffix("/chat/completions") { return URL(string: base)! }
@@ -101,3 +101,4 @@ public final class OpenAIAdapter: LLMServiceProtocol {
         }
         return APIEndpoints.openAIStyleStreamURL()
     }
+}

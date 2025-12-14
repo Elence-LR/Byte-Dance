@@ -15,6 +15,8 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     private var thinkingEnabled: Bool = false {
         didSet { updateThinkingButtonUI() }
     }
+    private var renderedMessageCount: Int = 0
+
     // 👇 移到主类中重写
         public override func viewWillAppear(_ animated: Bool) {
             super.viewWillAppear(animated)
@@ -90,35 +92,52 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         viewModel.onNewMessage = { [weak self] message in
             guard let self else { return }
             DispatchQueue.main.async {
-                print("ChatVC onNewMessage role:", message.role.rawValue,
-                      "contentLen:", message.content.count,
-                      "reasoningLen:", message.reasoning?.count ?? 0)
-                
-                // 1. 优化刷新方式：只刷新最后一行而非全表
-                let oldCount = self.viewModel.messages().count - 1 // 因为新消息已添加
-                let indexPath = IndexPath(row: oldCount, section: 0)
-                
-                // 检查索引是否有效，避免越界崩溃
-                if indexPath.row >= 0, indexPath.row < self.tableView.numberOfRows(inSection: 0) {
-                    self.tableView.reloadRows(at: [indexPath], with: .automatic)
-                } else {
-                    self.tableView.reloadData() // 边界情况降级为全表刷新
+                let msgs = self.viewModel.messages()
+                let newCount = msgs.count
+
+                // 1) 先处理“新增行”（insert）
+                if self.renderedMessageCount == 0 {
+                    // 首次进入/首次渲染
+                    self.tableView.reloadData()
+                    self.renderedMessageCount = newCount
+                } else if newCount > self.renderedMessageCount {
+                    // 有新消息 append（例如 user + assistant 占位、或 stop 后追加 system）
+                    let start = self.renderedMessageCount
+                    let end = newCount
+                    let indexPaths = (start..<end).map { IndexPath(row: $0, section: 0) }
+
+                    self.tableView.performBatchUpdates {
+                        self.tableView.insertRows(at: indexPaths, with: .automatic)
+                    }
+                    self.renderedMessageCount = newCount
                 }
-                
-                // 2. 优化滚动逻辑：永远滚到 tableView 当前的最后一行，避免越界
+
+                // 2) 再处理“更新某一行”（reload by message.id）
+                if let row = msgs.firstIndex(where: { $0.id == message.id }) {
+                    let ip = IndexPath(row: row, section: 0)
+                    if ip.row >= 0 && ip.row < self.tableView.numberOfRows(inSection: 0) {
+                        self.tableView.reloadRows(at: [ip], with: .none)
+                    } else {
+                        self.tableView.reloadData()
+                        self.renderedMessageCount = newCount
+                    }
+                } else {
+                    // 找不到就兜底
+                    self.tableView.reloadData()
+                    self.renderedMessageCount = newCount
+                }
+
+                // 3) 滚动逻辑（可选）：只在最后一行不在可视区域时滚
                 let rows = self.tableView.numberOfRows(inSection: 0)
                 guard rows > 0 else { return }
-
-                let safeIndexPath = IndexPath(row: rows - 1, section: 0)
-
-                // 仅当最后一行不在可视范围内时才滚动
-                let shouldScroll = self.tableView.indexPathsForVisibleRows?.contains(safeIndexPath) == false
+                let lastIP = IndexPath(row: rows - 1, section: 0)
+                let shouldScroll = self.tableView.indexPathsForVisibleRows?.contains(lastIP) == false
                 if shouldScroll {
-                    self.tableView.scrollToRow(at: safeIndexPath, at: .bottom, animated: true)
+                    self.tableView.scrollToRow(at: lastIP, at: .bottom, animated: true)
                 }
-
             }
         }
+
     }
 
     // 新增收起键盘的方法
@@ -215,7 +234,12 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         let cell = tableView.dequeueReusableCell(withIdentifier: MessageCell.reuseId, for: indexPath) as! MessageCell
         let message = viewModel.messages()[indexPath.row]
 
-        cell.configure(with: message, isReasoningExpanded: viewModel.isReasoningExpanded(messageID: message.id))
+        cell.configure(
+            with: message,
+            isReasoningExpanded: viewModel.isReasoningExpanded(messageID: message.id),
+            showRegenerate: viewModel.canRegenerate(messageID: message.id)
+        )
+
 
         cell.onToggleReasoning = { [weak self] messageID in
             guard let self else { return }
@@ -228,6 +252,20 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
                 }
             } else {
                 self.tableView.reloadData()
+            }
+        }
+        
+        cell.onRegenerate = { [weak self] messageID in
+            guard let self else { return }
+            var cfg = self.currentConfig
+            cfg.thinking = self.thinkingEnabled
+            self.viewModel.regenerate(assistantMessageID: messageID, config: cfg)
+
+            // 触发该行刷新，让按钮立刻隐藏（因为 isStreaming=true）
+            if let row = self.viewModel.messages().firstIndex(where: { $0.id == messageID }) {
+                self.tableView.performBatchUpdates {
+                    self.tableView.reloadRows(at: [IndexPath(row: row, section: 0)], with: .none)
+                }
             }
         }
 
