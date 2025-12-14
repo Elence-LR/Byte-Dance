@@ -16,7 +16,10 @@ public final class MockLLMService: LLMServiceProtocol {
         return Message(role: .assistant, content: "Static Echo: \(messages.last?.content ?? "")")
     }
 
-    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
-        return AsyncStream { continuation in continuation.finish() }
+    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
+        return AsyncThrowingStream { continuation in
+            continuation.finish()
+        }
     }
+
 }

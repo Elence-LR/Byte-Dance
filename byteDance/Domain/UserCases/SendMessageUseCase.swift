@@ -33,7 +33,7 @@ public final class SendMessageUseCase {
     }
 
     // 支持传入完整 userMessage（可携带 attachments）
-    public func stream(session: Session, userMessage: Message, config: AIModelConfig) -> AsyncStream<Message> {
+    public func stream(session: Session, userMessage: Message, config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
         repository.appendMessage(sessionID: session.id, message: userMessage)
         return service.streamMessage(
             sessionID: session.id,
@@ -43,7 +43,7 @@ public final class SendMessageUseCase {
     }
 
     // 旧的文本入口
-    public func stream(session: Session, userText: String, config: AIModelConfig) -> AsyncStream<Message> {
+    public func stream(session: Session, userText: String, config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
         stream(session: session, userMessage: Message(role: .user, content: userText), config: config)
     }
 }

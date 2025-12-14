@@ -29,36 +29,44 @@ public final class DashScopeAdapter: LLMServiceProtocol {
         return Message(role: .assistant, content: text, reasoning: nil)
     }
 
-    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
+    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
         let useIM = needsMultimodal(messages)
         let fallback = useIM ? APIEndpoints.dashScopeMultimodalURL() : APIEndpoints.dashScopeTextURL()
         let url = URL(string: config.baseURL ?? fallback.absoluteString)!
         print("DashScope stream URL:", url.absoluteString)
-        
+
         let headers = APIEndpoints.dashScopeHeaders(apiKey: config.apiKey ?? "", streaming: true)
         let body = makeDashScopeBody(messages: messages, config: config, incremental: true)
 
         let lines = sse.stream(url: url, headers: headers, body: body)
 
-        return AsyncStream { continuation in
+        return AsyncThrowingStream { continuation in
             Task {
-                for await line in lines {
-                    switch DashScopeSSEParser.parse(line: line) {
-                    case .token(let token):
-                        print("DashScope token:", token.prefix(80))
-                        continuation.yield(Message(role: .assistant, content: token))
-                    case .reasoning(let r):
-                        print("DashScope reasoning:", r.prefix(80))
-                        // 你可以选择把思考过程也展示出来，比如用特殊前缀/单独气泡
-                        continuation.yield(Message(role: .assistant, content: "", reasoning: r))
-                    case .done:
-                        continuation.finish()
-                        return
-                    case .ignore:
-                        continue
+                do {
+                    for try await line in lines {
+                        switch DashScopeSSEParser.parse(line: line) {
+                        case .token(let token):
+                            print("DashScope token:", token.prefix(80))
+                            continuation.yield(Message(role: .assistant, content: token))
+                        case .reasoning(let r):
+                            print("DashScope reasoning:", r.prefix(80))
+                            continuation.yield(Message(role: .assistant, content: "", reasoning: r))
+                        case .done:
+                            continuation.finish()
+                            return
+                        case .ignore:
+                            continue
+                        }
                     }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
-                continuation.finish()
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                // 这里不需要显式 cancel：外层 Task 会随着 continuation 结束而退出
+                // 如果你想更强硬一些，也可以把 Task 存起来然后 cancel
             }
         }
     }

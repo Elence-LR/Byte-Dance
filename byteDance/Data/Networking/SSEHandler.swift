@@ -1,5 +1,11 @@
 import Foundation
 
+public struct HTTPError: Error {
+    public let statusCode: Int
+    public let headers: [AnyHashable: Any]
+    public let body: Data?
+}
+
 public final class SSEHandler {
     public init() {}
 
@@ -7,34 +13,48 @@ public final class SSEHandler {
         url: URL,
         headers: [String: String] = [:],
         body: Data? = nil
-    ) -> AsyncStream<String> {
+    ) -> AsyncThrowingStream<String, Error> {
 
-        AsyncStream { continuation in
+        AsyncThrowingStream { continuation in
             let task = Task {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
                 request.httpBody = body
-                print("SSE start:", url.absoluteString)
-                print("SSE headers:", headers)
-                print("SSE body bytes:", body?.count ?? 0)
 
                 do {
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    if let http = response as? HTTPURLResponse {
-                        print("SSE status:", http.statusCode)
-                        let ct = (http.allHeaderFields["Content-Type"] as? String) ?? "-"
-                        print("SSE content-type:", ct)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw ChatError.responseFormatInvalid
                     }
+
+                    // ✅ 先判断 HTTP code，不是 2xx 直接抛
+                    if !(200...299).contains(http.statusCode) {
+                        // 尝试读取少量 body（避免读太久）
+                        var collected = Data()
+                        var count = 0
+                        for try await b in bytes {
+                            collected.append(b)
+                            count += 1
+                            if count > 64 * 1024 { break }
+                        }
+                        throw HTTPError(statusCode: http.statusCode,
+                                       headers: http.allHeaderFields,
+                                       body: collected.isEmpty ? nil : collected)
+                    }
+
+                    // ✅ 正常：按行读 SSE
                     for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        print("SSE line:", String(line.prefix(200)))
+                        if Task.isCancelled { throw CancellationError() }
                         continuation.yield(line)
                     }
+
+                    continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish(throwing: ChatError.cancelled)
                 } catch {
-                    print("SSE error:", String(describing: error))
+                    continuation.finish(throwing: error)
                 }
-                continuation.finish()
             }
 
             continuation.onTermination = { _ in

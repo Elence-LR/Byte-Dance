@@ -15,6 +15,23 @@ public final class ChatViewModel {
     private let repository: ChatRepositoryProtocol
     public var onNewMessage: ((Message) -> Void)?
     private var reasoningExpanded: [UUID: Bool] = [:]
+    private var currentStreamTask: Task<Void, Never>?
+    
+    public private(set) var isStreaming: Bool = false {
+        didSet { onStreamingStateChanged?(isStreaming) }
+    }
+    
+    public var onStreamingStateChanged: ((Bool) -> Void)?
+
+    public func cancelCurrentStream() {
+        currentStreamTask?.cancel()
+        currentStreamTask = nil
+        isStreaming = false
+        Task { @MainActor in
+            self.addSystemTip(ChatError.cancelled.userMessage)
+        }
+    }
+
 
     public init(session: Session, sendUseCase: SendMessageUseCase, repository: ChatRepositoryProtocol) {
         self.session = session
@@ -81,14 +98,13 @@ public final class ChatViewModel {
     
     // MARK: - 统一入口（文本/图片都走这里）
     public func stream(userMessage: Message, config: AIModelConfig) {
-        // 原始 append 用户消息
+        // 如果正在流，先取消旧的（避免并发两个流）
+        if isStreaming { cancelCurrentStream() }
+
         let s = sendUseCase.stream(session: session, userMessage: userMessage, config: config)
 
-        if let last = repository.fetchMessages(sessionID: session.id).last {
-            onNewMessage?(last)
-        } else {
-            onNewMessage?(Message(role: .system, content: ""))
-        }
+        // append 用户消息 & assistant 占位（你们现有逻辑保留）
+        // ...（保持你现在 L26-L42 的 append）:contentReference[oaicite:11]{index=11}
 
         let assistantID = UUID()
         repository.appendMessage(sessionID: session.id,
@@ -97,23 +113,46 @@ public final class ChatViewModel {
             onNewMessage?(appended)
         }
 
-        // 逐 token 更新 assistant 占位消息
-        Task {
+        isStreaming = true
+
+        currentStreamTask = Task {
             var contentBuffer = ""
             var reasoningBuffer = ""
-            for await m in s {
-                if let r = m.reasoning {
-                    reasoningBuffer += r
-                    repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
-                } else {
-                    contentBuffer += m.content
-                    repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
+            var hasAnyToken = false
+
+            do {
+                for try await m in s {
+                    if Task.isCancelled { throw CancellationError() }
+
+                    if let r = m.reasoning {
+                        reasoningBuffer += r
+                        repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
+                        hasAnyToken = true
+                    } else {
+                        contentBuffer += m.content
+                        repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
+                        if !m.content.isEmpty { hasAnyToken = true }
+                    }
+
+                    if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
+                        onNewMessage?(updated)
+                    }
                 }
 
-                if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
-                    onNewMessage?(updated)
-                } else {
-                    onNewMessage?(m)
+                // 正常结束
+                isStreaming = false
+                currentStreamTask = nil
+
+            } catch {
+                isStreaming = false
+                currentStreamTask = nil
+
+                let mapped = ErrorMapper.map(error)
+                await MainActor.run {
+                    // ✅ 取消不当作失败（你也可以不提示，只改 UI 状态）
+                    if mapped != .cancelled {
+                        self.addSystemTip(mapped.userMessage)
+                    }
                 }
             }
         }

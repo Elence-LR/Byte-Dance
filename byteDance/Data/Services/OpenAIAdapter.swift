@@ -18,35 +18,39 @@ public final class OpenAIAdapter: LLMServiceProtocol {
         return Message(role: .assistant, content: text)
     }
 
-    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
+    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig)
+      -> AsyncThrowingStream<Message, Error> {
+
         let url = normalizedOpenAIURL(config: config)
-        print("OpenAI stream URL:", url.absoluteString)
         let headers = APIEndpoints.openAIStyleHeaders(apiKey: config.apiKey ?? "")
         let body = makeBody(messages: messages, config: config)
 
         let lines = sse.stream(url: url, headers: headers, body: body)
 
-        return AsyncStream { continuation in
+        return AsyncThrowingStream { continuation in
             Task {
-                for await line in lines {
-                    switch OpenAIStyleSSEParser.parse(line: line) {
-                    case .token(let token):
-                        print("OpenAI token:", token.prefix(80))
-                        continuation.yield(Message(role: .assistant, content: token))
-                    case .reasoning(let r):
-                        print("OpenAI reasoning:", r.prefix(80))
-                        continuation.yield(Message(role: .assistant, content: "", reasoning: r))
-                    case .done:
-                        continuation.finish()
-                        return
-                    case .ignore:
-                        continue
+                do {
+                    for try await line in lines {
+                        switch OpenAIStyleSSEParser.parse(line: line) { // 你们现有解析器保留
+                        case .token(let token):
+                            continuation.yield(Message(role: .assistant, content: token))
+                        case .reasoning(let r):
+                            continuation.yield(Message(role: .assistant, content: "", reasoning: r))
+                        case .done:
+                            continuation.finish()
+                            return
+                        case .ignore:
+                            continue
+                        }
                     }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
-                continuation.finish()
             }
         }
     }
+
 
     
     

@@ -7,11 +7,25 @@
 import UIKit
 
 public final class InputBarView: UIView, UITextViewDelegate {
+    public enum Mode {
+        case send
+        case stop
+    }
+    
     public let imageButton = UIButton(type: .system)
     public let textView = UITextView()
     public let sendButton = UIButton(type: .system)
     public var onSend: ((String) -> Void)?
+    public var onStop: (() -> Void)?
     public var onImageButtonTapped: (() -> Void)?
+    
+    private var mode: Mode = .send {
+        didSet { updateSendButtonUI() }
+    }
+    
+    public func setMode(_ mode: Mode) {
+        self.mode = mode
+    }
 
     private var textViewHeightConstraint: NSLayoutConstraint?
     private let minInputHeight: CGFloat = 36
@@ -67,16 +81,27 @@ public final class InputBarView: UIView, UITextViewDelegate {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8)
         ])
+        
+        updateSendButtonUI()
     }
 
     @objc private func sendTapped() {
-        let text = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        print("InputBar sendTapped length:", text.count)
-        onSend?(text)
-        textView.text = ""
-        updateTextViewHeight()
+        switch mode {
+        case .send:
+            let text = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return }
+            print("InputBar sendTapped length:", text.count)
+            onSend?(text)
+            textView.text = ""
+            updateTextViewHeight()
+
+        case .stop:
+            print("InputBar stopTapped")
+            onStop?()
+            // 注意：不在这里清空文本，让取消后用户还能继续编辑/重发
+        }
     }
+
 
     @objc private func imageButtonTapped() {
         onImageButtonTapped?()
@@ -93,5 +118,23 @@ public final class InputBarView: UIView, UITextViewDelegate {
         textView.isScrollEnabled = targetHeight > maxInputHeight
         textViewHeightConstraint?.constant = clamped
         layoutIfNeeded()
+    }
+    
+    private func updateSendButtonUI() {
+        switch mode {
+        case .send:
+            sendButton.setTitle(NSLocalizedString("Send", comment: ""), for: .normal)
+            sendButton.isEnabled = true
+            // 可选：停止时禁用图片按钮/输入框，这里 send 态恢复
+            imageButton.isEnabled = true
+            textView.isEditable = true
+
+        case .stop:
+            sendButton.setTitle(NSLocalizedString("Stop", comment: ""), for: .normal)
+            sendButton.isEnabled = true
+            // 可选：流式期间不让继续改输入/选图，避免并发请求
+            imageButton.isEnabled = false
+            textView.isEditable = false
+        }
     }
 }

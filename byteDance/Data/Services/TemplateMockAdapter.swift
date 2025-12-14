@@ -11,9 +11,9 @@ public final class TemplateMockAdapter: LLMServiceProtocol {
         Message(role: .assistant, content: template)
     }
 
-    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
+    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
         let chunks = chunk(template, size: 80)
-        return AsyncStream { continuation in
+        return AsyncThrowingStream { continuation in
             Task {
                 for c in chunks {
                     continuation.yield(Message(role: .assistant, content: c))
@@ -23,6 +23,7 @@ public final class TemplateMockAdapter: LLMServiceProtocol {
             }
         }
     }
+
 
     private func chunk(_ s: String, size: Int) -> [String] {
         var result: [String] = []

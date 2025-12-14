@@ -37,7 +37,9 @@ public final class LLMServiceRouter: LLMServiceProtocol {
         try await service(for: config).sendMessage(sessionID: sessionID, messages: messages, config: config)
     }
 
-    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) -> AsyncStream<Message> {
+    public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig)
+      -> AsyncThrowingStream<Message, Error> {
         service(for: config).streamMessage(sessionID: sessionID, messages: messages, config: config)
     }
+
 }

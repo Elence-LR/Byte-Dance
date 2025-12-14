@@ -105,11 +105,18 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
                     self.tableView.reloadData() // 边界情况降级为全表刷新
                 }
                 
-                // 2. 优化滚动逻辑：仅在需要时滚动（避免重复滚动）
-                let shouldScroll = self.tableView.indexPathsForVisibleRows?.contains(indexPath) == false
+                // 2. 优化滚动逻辑：永远滚到 tableView 当前的最后一行，避免越界
+                let rows = self.tableView.numberOfRows(inSection: 0)
+                guard rows > 0 else { return }
+
+                let safeIndexPath = IndexPath(row: rows - 1, section: 0)
+
+                // 仅当最后一行不在可视范围内时才滚动
+                let shouldScroll = self.tableView.indexPathsForVisibleRows?.contains(safeIndexPath) == false
                 if shouldScroll {
-                    self.tableView.scrollToRow(at: indexPath, at: .bottom, animated: true)
+                    self.tableView.scrollToRow(at: safeIndexPath, at: .bottom, animated: true)
                 }
+
             }
         }
     }
@@ -155,7 +162,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             // InputBar 位于底部安全区域
             inputBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             inputBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            inputBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+//            inputBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             
            // TableView 底部连接到 InputBar 顶部
            tableView.bottomAnchor.constraint(equalTo: inputBar.topAnchor)
@@ -173,6 +180,11 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             print("ChatVC config provider:", cfg.provider.rawValue, "model:", cfg.modelName, "baseURL:", cfg.baseURL ?? "nil", "apiKey:", (cfg.apiKey?.isEmpty == false))
             self.viewModel.stream(text: text, config: cfg)
         }
+        
+        inputBar.onStop = { [weak self] in
+            guard let self else { return }
+            self.viewModel.cancelCurrentStream()
+        }
 
         //李相瑜新增：图片按钮点击 -> 弹 picker
         inputBar.onImageButtonTapped = { [weak self] in
@@ -184,6 +196,14 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             picker.delegate = self
             self.present(picker, animated: true)
         }
+        
+        viewModel.onStreamingStateChanged = { [weak self] streaming in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                self.inputBar.setMode(streaming ? .stop : .send)
+            }
+        }
+
     }
 
     // MARK: - UITableViewDataSource
