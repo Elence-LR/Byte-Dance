@@ -232,34 +232,22 @@ public final class MessageCell: UITableViewCell {
         contentStack.addArrangedSubview(label)
         #endif
 
-        // Attachments (图片)
+        // Attachments (图片) - 替换原有图片处理逻辑
         if let attachments = message.attachments {
             for att in attachments {
                 if att.kind == .imageDataURL {
-                    let imageView = UIImageView()
-                    imageView.contentMode = .scaleAspectFit
-                    imageView.clipsToBounds = true
-                    imageView.layer.cornerRadius = 8
-                    if att.value.hasPrefix("data:image") {
-                        // Base64
-                        if let data = Data(base64Encoded: att.value.components(separatedBy: ",").last ?? ""),
-                           let img = UIImage(data: data) {
-                            imageView.image = img
-                        }
-                    } else if let url = URL(string: att.value) {
-                        // 网络 URL
-                        // 可以使用 SDWebImage / URLSession
-                        URLSession.shared.dataTask(with: url) { data, _, _ in
-                            if let d = data, let img = UIImage(data: d) {
-                                DispatchQueue.main.async { imageView.image = img }
-                            }
-                        }.resume()
-                    }
+                    // 使用 setupImageView 方法创建图片视图
+                    let imageView = setupImageView(for: att)
+                    // 添加到内容栈
                     contentStack.addArrangedSubview(imageView)
+                    // 加载图片（包含网络图片和Base64图片处理）
+                    loadImage(for: imageView, from: att)
+                    
+                    // 确保图片视图在栈中正确布局
+                    imageView.widthAnchor.constraint(lessThanOrEqualTo: contentStack.widthAnchor).isActive = true
                 }
             }
-        }
-
+    }
         // Layout constraints
         NSLayoutConstraint.deactivate([leftLeading, leftTrailingMax, rightTrailing, rightLeadingMin, centerConstraint])
 

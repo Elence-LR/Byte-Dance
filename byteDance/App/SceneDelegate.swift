@@ -19,6 +19,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         coordinator.start()
         self.window = window
         self.coordinator = coordinator
+        
+        #if DEBUG
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            ASRDebugRunner.runFileTest(apiKey: "sk-c548943059844079a4cdcb92ed19163a")
+        }
+        #endif
+
         window.makeKeyAndVisible()
     }
 }

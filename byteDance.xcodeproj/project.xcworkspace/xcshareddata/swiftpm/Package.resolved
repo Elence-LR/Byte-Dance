@@ -1,5 +1,5 @@
 {
-  "originHash" : "142fa79aa03e2f4699068e703a1dc38f12779d0ed20fd7b79fa58d44fc1e2a0e",
+  "originHash" : "ff772d0442e867ce9ec67edb450fbfc27dc01dbc04e8a331392dcac78b3d4eec",
   "pins" : [
     {
       "identity" : "down",
@@ -8,6 +8,15 @@
       "state" : {
         "branch" : "master",
         "revision" : "e754ab1c80920dd51a8e08290c912ac1c2ac8b58"
+      }
+    },
+    {
+      "identity" : "sdwebimage",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SDWebImage/SDWebImage.git",
+      "state" : {
+        "revision" : "36e79ba485e9bb4d3cd4e3318908866dac5e7b51",
+        "version" : "5.21.5"
       }
     }
   ],

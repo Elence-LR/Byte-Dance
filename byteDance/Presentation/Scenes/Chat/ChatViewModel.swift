@@ -138,7 +138,7 @@ public final class ChatViewModel {
     // 由于没有服务器，所以我们上传图片选择Base64编码方式上传
     public func sendImage(_ image: UIImage, prompt: String = "图中描绘的是什么景象？", config: AIModelConfig) {
         Task {
-            guard let data = ImageProcessor.jpegData(from: image, maxKB: 300) else {
+            guard let data = ImageProcessor.optimizedJpegData(from: image, maxKB: 300) else {
                 await MainActor.run { self.addSystemTip("图片压缩失败") }
                 return
             }
@@ -322,5 +322,22 @@ public final class ChatViewModel {
             onNewMessage?(updated)
         }
     }
+    
+    
+    // 1) ASR partial -> 只更新草稿（不发送）
+    @MainActor
+    public func updateDraftFromASR(_ text: String) {
+        updateDraft(text) // 复用已有草稿逻辑
+    }
+
+    // 2) ASR final -> 清草稿 + 走你现有 stream 发送
+    @MainActor
+    public func commitASRFinalAndStream(_ text: String, config: AIModelConfig) {
+        clearDraft()       // 复用已有清草稿逻辑
+        stream(text: text, config: config) // 走现有文本入口
+    }
+    
+    
+
 
 }

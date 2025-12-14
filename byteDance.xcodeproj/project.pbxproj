@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		721796BC2EEFA394004448E9 /* SDWebImage in Frameworks */ = {isa = PBXBuildFile; productRef = 721796BB2EEFA394004448E9 /* SDWebImage */; };
+		721796BE2EEFA394004448E9 /* SDWebImageMapKit in Frameworks */ = {isa = PBXBuildFile; productRef = 721796BD2EEFA394004448E9 /* SDWebImageMapKit */; };
 		DBC33EF22EE329AE00E11542 /* Down in Frameworks */ = {isa = PBXBuildFile; productRef = DBC33EF12EE329AE00E11542 /* Down */; };
 /* End PBXBuildFile section */
 
@@ -40,6 +42,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				721796BC2EEFA394004448E9 /* SDWebImage in Frameworks */,
+				721796BE2EEFA394004448E9 /* SDWebImageMapKit in Frameworks */,
 				DBC33EF22EE329AE00E11542 /* Down in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -84,6 +88,8 @@
 			name = byteDance;
 			packageProductDependencies = (
 				DBC33EF12EE329AE00E11542 /* Down */,
+				721796BB2EEFA394004448E9 /* SDWebImage */,
+				721796BD2EEFA394004448E9 /* SDWebImageMapKit */,
 			);
 			productName = byteDance;
 			productReference = DBC33DFB2EE176F900E11542 /* byteDance.app */;
@@ -115,6 +121,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				DBC33EF02EE329AD00E11542 /* XCRemoteSwiftPackageReference "Down" */,
+				721796BA2EEFA394004448E9 /* XCRemoteSwiftPackageReference "SDWebImage" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DBC33DFC2EE176F900E11542 /* Products */;
@@ -358,6 +365,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		721796BA2EEFA394004448E9 /* XCRemoteSwiftPackageReference "SDWebImage" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SDWebImage/SDWebImage.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.21.5;
+			};
+		};
 		DBC33EF02EE329AD00E11542 /* XCRemoteSwiftPackageReference "Down" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/johnxnguyen/Down.git";
@@ -369,6 +384,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		721796BB2EEFA394004448E9 /* SDWebImage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 721796BA2EEFA394004448E9 /* XCRemoteSwiftPackageReference "SDWebImage" */;
+			productName = SDWebImage;
+		};
+		721796BD2EEFA394004448E9 /* SDWebImageMapKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 721796BA2EEFA394004448E9 /* XCRemoteSwiftPackageReference "SDWebImage" */;
+			productName = SDWebImageMapKit;
+		};
 		DBC33EF12EE329AE00E11542 /* Down */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = DBC33EF02EE329AD00E11542 /* XCRemoteSwiftPackageReference "Down" */;
