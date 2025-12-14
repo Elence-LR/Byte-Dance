@@ -56,6 +56,8 @@ public final class ChatViewModel {
     }
 
 
+
+
     public init(session: Session, sendUseCase: SendMessageUseCase, repository: ChatRepositoryProtocol) {
         self.session = session
         self.sendUseCase = sendUseCase
@@ -320,4 +322,5 @@ public final class ChatViewModel {
             onNewMessage?(updated)
         }
     }
+
 }
