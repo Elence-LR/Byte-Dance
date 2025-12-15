@@ -28,9 +28,9 @@ public final class SSEHandler {
                         throw ChatError.responseFormatInvalid
                     }
 
-                    // ✅ 先判断 HTTP code，不是 2xx 直接抛
+                    // 判断 HTTP code
                     if !(200...299).contains(http.statusCode) {
-                        // 尝试读取少量 body（避免读太久）
+                        // 读取少量 body
                         var collected = Data()
                         var count = 0
                         for try await b in bytes {
@@ -43,7 +43,7 @@ public final class SSEHandler {
                                        body: collected.isEmpty ? nil : collected)
                     }
 
-                    // ✅ 正常：按行读 SSE
+                    // 按行读 SSE
                     for try await line in bytes.lines {
                         if Task.isCancelled { throw CancellationError() }
                         continuation.yield(line)

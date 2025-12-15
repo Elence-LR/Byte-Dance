@@ -41,7 +41,7 @@ public final class DashScopeAdapter: LLMServiceProtocol {
         let lines = sse.stream(url: url, headers: headers, body: body)
 
         return AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     for try await line in lines {
                         switch DashScopeSSEParser.parse(line: line) {
@@ -65,8 +65,7 @@ public final class DashScopeAdapter: LLMServiceProtocol {
             }
 
             continuation.onTermination = { @Sendable _ in
-                // 这里不需要显式 cancel：外层 Task 会随着 continuation 结束而退出
-                // 如果你想更强硬一些，也可以把 Task 存起来然后 cancel
+                task.cancel()
             }
         }
     }
@@ -124,7 +123,7 @@ public final class DashScopeAdapter: LLMServiceProtocol {
             }
             obj["content"] = parts
         } else {
-            // 非多模态消息保持你现在的方式：纯 string
+            // 非多模态消息：纯 string
             obj["content"] = m.content
         }
 

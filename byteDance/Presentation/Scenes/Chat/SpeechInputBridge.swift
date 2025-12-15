@@ -6,7 +6,7 @@ final class SpeechInputBridge {
     private var listenTask: Task<Void, Never>?
     private var isRunning = false
 
-    // ✅ 新增：缓存“聊天模型”的 config（和 ASRConfig 完全分开）
+    // 缓存“聊天模型”的 config
     private var chatConfig: AIModelConfig?
 
     init(chatViewModel: ChatViewModel, asr: SpeechTranscriptionService = AliyunRealtimeASRAdapter()) {
@@ -14,7 +14,7 @@ final class SpeechInputBridge {
         self.asr = asr
     }
 
-    /// ✅ 同时传入：语音识别配置 + 聊天模型配置
+    /// 同时传入：语音识别配置 + 聊天模型配置
     func start(asrConfig: ASRConfig, chatConfig: AIModelConfig) {
         guard !isRunning else { return }
         isRunning = true
@@ -31,7 +31,7 @@ final class SpeechInputBridge {
                         vm.updateDraftFromASR(t)
 
                     case .final(let t):
-                        // ✅ final 用“聊天模型 config”发给 LLM（不是 ASR）
+                        // 用“聊天模型 config”发给 LLM（不是 ASR）
                         if let cfg = self.chatConfig {
                             vm.commitASRFinalAndStream(t, config: cfg)
                         }
@@ -45,7 +45,7 @@ final class SpeechInputBridge {
 
         Task { [weak self] in
             do {
-                try await self?.asr.connect(config: asrConfig) // ✅ 只用于 ASR
+                try await self?.asr.connect(config: asrConfig) // 只用于 ASR
             } catch {
                 print("[ASR] connect failed:", error)
             }

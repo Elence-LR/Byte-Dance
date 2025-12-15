@@ -35,7 +35,9 @@ public final class ChatViewModel {
     public var onStreamingStateChanged: ((Bool) -> Void)?
     // 草稿更新回调
     public var onDraftUpdated: ((String) -> Void)?
-
+    
+    
+    // 终止对话，取消当前流
     public func cancelCurrentStream() {
         if let id = currentAssistantID {
             regeneratableAssistantIDs.insert(id)
@@ -45,7 +47,7 @@ public final class ChatViewModel {
         currentStreamTask = nil
         isStreaming = false
 
-        // 关键：刷新被 stop 的 assistant 行，让“重试按钮”立刻出现
+        // 刷新被 stop 的 assistant 行，让“重试按钮”立刻出现
         if let id = currentAssistantID {
             notifyAssistantUpdated(id)
         }

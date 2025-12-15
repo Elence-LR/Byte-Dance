@@ -28,10 +28,10 @@ public final class OpenAIAdapter: LLMServiceProtocol {
         let lines = sse.stream(url: url, headers: headers, body: body)
 
         return AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     for try await line in lines {
-                        switch OpenAIStyleSSEParser.parse(line: line) { // 你们现有解析器保留
+                        switch OpenAIStyleSSEParser.parse(line: line) {
                         case .token(let token):
                             continuation.yield(Message(role: .assistant, content: token))
                         case .reasoning(let r):
@@ -47,6 +47,10 @@ public final class OpenAIAdapter: LLMServiceProtocol {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }
