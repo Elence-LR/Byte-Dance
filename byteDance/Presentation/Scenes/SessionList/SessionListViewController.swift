@@ -31,7 +31,7 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        title = NSLocalizedString("Sessions", comment: "")
+        title = "对话"
         setupTable()
         setupSearchBar() // 新增：初始化搜索栏
         
