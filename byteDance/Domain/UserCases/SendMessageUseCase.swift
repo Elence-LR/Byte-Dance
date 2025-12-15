@@ -15,7 +15,6 @@ public final class SendMessageUseCase {
         self.service = service
     }
 
-    // 支持传入完整 userMessage（可携带 attachments）
     public func execute(session: Session, userMessage: Message, config: AIModelConfig) async throws -> Message {
         repository.appendMessage(sessionID: session.id, message: userMessage)
         let response = try await service.sendMessage(
@@ -27,12 +26,10 @@ public final class SendMessageUseCase {
         return response
     }
 
-    // 旧的文本入口（不破坏现有调用方）
     public func execute(session: Session, userText: String, config: AIModelConfig) async throws -> Message {
         try await execute(session: session, userMessage: Message(role: .user, content: userText), config: config)
     }
 
-    // 支持传入完整 userMessage（可携带 attachments）
     public func stream(session: Session, userMessage: Message, config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
         repository.appendMessage(sessionID: session.id, message: userMessage)
         return service.streamMessage(
@@ -42,20 +39,24 @@ public final class SendMessageUseCase {
         )
     }
 
-    // 旧的文本入口
     public func stream(session: Session, userText: String, config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
         stream(session: session, userMessage: Message(role: .user, content: userText), config: config)
     }
+
+    public func summarize(session: Session, config: AIModelConfig, instruction: String? = nil) async throws -> String {
+        let history = repository.fetchMessages(sessionID: session.id)
+        var msgs = history
+        let prompt = instruction ?? "请总结以上会话的核心要点，200字内"
+        msgs.append(Message(role: .user, content: prompt))
+        let result = try await service.sendMessage(sessionID: session.id, messages: msgs, config: config)
+        return result.content
+    }
     
-    
-    // 新增：用于“重试生成”——不 append userMessage，直接用传入的 messages 发起流式请求
     public func stream(session: Session, messages: [Message], config: AIModelConfig) -> AsyncThrowingStream<Message, Error> {
-        return service.streamMessage(
+        service.streamMessage(
             sessionID: session.id,
             messages: messages,
             config: config
         )
     }
-
 }
-

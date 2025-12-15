@@ -15,6 +15,8 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
     private var thinkingEnabled: Bool = false {
         didSet { updateThinkingButtonUI() }
     }
+    private let combineButton = UIButton(type: .system)
+    private var combineEnabled: Bool = true
     private var inputBarBottomConstraint: NSLayoutConstraint!
     private var renderedMessageCount: Int = 0  // 优化消息刷新用
     
@@ -84,6 +86,7 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         setupInput()
         setupModelSwitcher()
         setupThinkingToggle()
+        setupCombineToggle()
         setupDraftHandling()
         loadDraft()
         
@@ -197,7 +200,15 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             guard let self else { return }
             var cfg = self.currentConfig
             cfg.thinking = self.thinkingEnabled
-            self.viewModel.stream(text: text, config: cfg)
+            if self.combineEnabled {
+                Task {
+                    let summary = await self.viewModel.summarizeHistory(config: cfg) ?? ""
+                    let final = "这是我们之前的聊天内容：\(summary)\n请你结合以上内容，回答一下问题：\(text)"
+                    self.viewModel.streamWithCombined(displayText: text, sendText: final, config: cfg)
+                }
+            } else {
+                self.viewModel.stream(text: text, config: cfg)
+            }
             self.clearDraft()
             self.inputBar.textView.text = ""
             self.inputBar.textView.layoutIfNeeded()
@@ -428,6 +439,44 @@ extension ChatViewController {
     }
 }
 
+extension ChatViewController {
+    private func setupCombineToggle() {
+        combineButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(combineButton)
+        var cfg = UIButton.Configuration.filled()
+        cfg.cornerStyle = .capsule
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
+        cfg.imagePadding = 6
+        combineButton.configuration = cfg
+        combineButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+        combineButton.addTarget(self, action: #selector(didTapCombineToggle), for: .touchUpInside)
+        updateCombineButtonUI()
+        NSLayoutConstraint.activate([
+            combineButton.leadingAnchor.constraint(equalTo: thinkingButton.trailingAnchor, constant: 8),
+            combineButton.bottomAnchor.constraint(equalTo: thinkingButton.bottomAnchor),
+            combineButton.heightAnchor.constraint(equalTo: thinkingButton.heightAnchor)
+        ])
+    }
+
+    @objc private func didTapCombineToggle() {
+        combineEnabled.toggle()
+        updateCombineButtonUI()
+        Task { @MainActor in
+            viewModel.addSystemTip(combineEnabled ? "已开启结合全文" : "已关闭结合全文")
+        }
+    }
+
+    private func updateCombineButtonUI() {
+        let title = combineEnabled ? "结合全文：开" : "结合全文：关"
+        let imageName = combineEnabled ? "text.book.closed" : "text.book.closed.fill"
+        combineButton.setTitle(title, for: .normal)
+        combineButton.setImage(UIImage(systemName: imageName), for: .normal)
+        if #available(iOS 15.0, *) {
+            combineButton.configuration?.baseBackgroundColor = combineEnabled ? .systemBlue : .tertiarySystemFill
+            combineButton.configuration?.baseForegroundColor = combineEnabled ? .white : .label
+        }
+    }
+}
 // MARK: - 键盘处理
 extension ChatViewController {
     @objc private func keyboardWillShow(_ notification: NSNotification) {

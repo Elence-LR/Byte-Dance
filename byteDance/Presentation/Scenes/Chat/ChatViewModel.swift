@@ -227,6 +227,7 @@ public final class ChatViewModel {
         stream(userMessage: Message(role: .user, content: text), config: config)
     }
     
+
     
     public func messages() -> [Message] {
         repository.fetchMessages(sessionID: session.id)
@@ -248,6 +249,85 @@ public final class ChatViewModel {
     
     public func toggleReasoningExpanded(messageID: UUID) {
         reasoningExpanded[messageID] = !(reasoningExpanded[messageID] ?? false)
+    }
+
+    public func summarizeHistory(config: AIModelConfig) async -> String? {
+        do {
+            return try await sendUseCase.summarize(session: session, config: config)
+        } catch {
+            return nil
+        }
+    }
+    
+    public func streamWithCombined(displayText: String, sendText: String, config: AIModelConfig) {
+        if isStreaming { cancelCurrentStream() }
+        
+        let displayMsg = Message(role: .user, content: displayText)
+        repository.appendMessage(sessionID: session.id, message: displayMsg)
+        onNewMessage?(displayMsg)
+        
+        var msgs = repository.fetchMessages(sessionID: session.id)
+        if let idx = msgs.lastIndex(where: { $0.role == .user }) {
+            let orig = msgs[idx]
+            msgs[idx] = Message(id: orig.id, role: .user, content: sendText)
+        } else {
+            msgs.append(Message(role: .user, content: sendText))
+        }
+        
+        let s = sendUseCase.stream(session: session, messages: msgs, config: config)
+        
+        let assistantID = UUID()
+        currentAssistantID = assistantID
+        repository.appendMessage(sessionID: session.id, message: Message(id: assistantID, role: .assistant, content: "", reasoning: nil))
+        if let appended = repository.fetchMessages(sessionID: session.id).last {
+            onNewMessage?(appended)
+        }
+        
+        isStreaming = true
+        
+        currentStreamTask = Task {
+            var contentBuffer = ""
+            var reasoningBuffer = ""
+            var hasAnyToken = false
+            
+            do {
+                for try await m in s {
+                    if Task.isCancelled { throw CancellationError() }
+                    
+                    if let r = m.reasoning {
+                        reasoningBuffer += r
+                        repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
+                        hasAnyToken = true
+                    } else {
+                        contentBuffer += m.content
+                        repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
+                        if !m.content.isEmpty { hasAnyToken = true }
+                    }
+                    
+                    if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
+                        onNewMessage?(updated)
+                    }
+                }
+                
+                isStreaming = false
+                currentStreamTask = nil
+                regeneratableAssistantIDs.insert(assistantID)
+                notifyAssistantUpdated(assistantID)
+                
+            } catch {
+                isStreaming = false
+                currentStreamTask = nil
+                regeneratableAssistantIDs.insert(assistantID)
+                notifyAssistantUpdated(assistantID)
+                
+                let mapped = ErrorMapper.map(error)
+                await MainActor.run {
+                    if mapped != .cancelled {
+                        self.addSystemTip(mapped.userMessage)
+                    }
+                }
+            }
+        }
     }
     
     

@@ -12,10 +12,10 @@ public final class OpenAIAdapter: LLMServiceProtocol {
     public func sendMessage(sessionID: UUID, messages: [Message], config: AIModelConfig) async throws -> Message {
         let url = normalizedOpenAIURL(config: config)
         print("OpenAI send URL:", url.absoluteString)
-        let payload = try JSONEncoder().encode(RequestPayload(messages: messages, config: config))
-        let data = try await client.request(url: url, headers: headers(config: config), body: payload)
-        let text = String(data: data, encoding: .utf8) ?? ""
-        return Message(role: .assistant, content: text)
+        let body = makeBody(messages: messages, config: config, stream: false)
+        let data = try await client.request(url: url, headers: headers(config: config), body: body)
+        let (content, reasoning) = extractOpenAIContent(from: data)
+        return Message(role: .assistant, content: content, reasoning: reasoning)
     }
 
     public func streamMessage(sessionID: UUID, messages: [Message], config: AIModelConfig)
@@ -58,7 +58,7 @@ public final class OpenAIAdapter: LLMServiceProtocol {
 
     
     
-    private func makeBody(messages: [Message], config: AIModelConfig) -> Data? {
+    private func makeBody(messages: [Message], config: AIModelConfig, stream: Bool = true) -> Data? {
         let messagesArr = messages.map { ["role": $0.role.rawValue, "content": $0.content] }
 
         let modelName: String = {
@@ -73,7 +73,7 @@ public final class OpenAIAdapter: LLMServiceProtocol {
         var payload: [String: Any] = [
             "model": modelName,
             "messages": messagesArr,
-            "stream": true
+            "stream": stream
         ]
 
         
@@ -81,6 +81,26 @@ public final class OpenAIAdapter: LLMServiceProtocol {
         
 
         return try? JSONSerialization.data(withJSONObject: payload)
+    }
+
+    private func extractOpenAIContent(from data: Data) -> (String, String?) {
+        struct ChoiceMsg: Decodable {
+            let role: String?
+            let content: String?
+            let reasoning_content: String?
+        }
+        struct Choice: Decodable {
+            let message: ChoiceMsg?
+        }
+        struct Resp: Decodable {
+            let choices: [Choice]?
+        }
+        if let resp = try? JSONDecoder().decode(Resp.self, from: data),
+           let msg = resp.choices?.first?.message {
+            return (msg.content ?? "", msg.reasoning_content)
+        }
+        let text = String(data: data, encoding: .utf8) ?? ""
+        return (text, nil)
     }
 
 
@@ -92,11 +112,6 @@ public final class OpenAIAdapter: LLMServiceProtocol {
         return h
     }
 
-    private struct RequestPayload: Codable {
-        let messages: [Message]
-        let config: AIModelConfig
-    }
-    
     private func normalizedOpenAIURL(config: AIModelConfig) -> URL {
         if let base = config.baseURL, !base.isEmpty {
             if base.hasSuffix("/chat/completions") { return URL(string: base)! }
