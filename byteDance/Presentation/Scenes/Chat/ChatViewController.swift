@@ -81,10 +81,10 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         setupTable()
         setupInput()
         setupModelSwitcher()
-        setupThinkingToggle()
-        setupCombineToggle()
         setupDraftHandling()
         loadDraft()
+        inputBar.setThinkingEnabled(thinkingEnabled)
+        inputBar.setCombineEnabled(combineEnabled)
         
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tapGesture.cancelsTouchesInView = false
@@ -137,10 +137,12 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             cfg.thinking = self.thinkingEnabled
             
             if self.combineEnabled {
+                self.viewModel.showUserDisplay(text: text)
+                self.viewModel.beginAssistantPlaceholder()
                 Task {
                     let summary = await self.viewModel.summarizeHistory(config: cfg) ?? ""
                     let finalText = "这是我们之前的聊天内容：\(summary)\n请你结合以上内容，回答一下问题：\(text)"
-                    self.viewModel.streamWithCombined(displayText: text, sendText: finalText, config: cfg)
+                    self.viewModel.streamAfterDisplay(sendText: finalText, config: cfg)
                 }
             } else {
                 self.viewModel.stream(text: text, config: cfg)
@@ -162,6 +164,24 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             let picker = PHPickerViewController(configuration: pickerConfig)
             picker.delegate = self
             self.present(picker, animated: true)
+        }
+        
+        inputBar.onToggleThinking = { [weak self] in
+            guard let self = self else { return }
+            self.thinkingEnabled.toggle()
+            self.inputBar.setThinkingEnabled(self.thinkingEnabled)
+            Task { @MainActor in
+                self.viewModel.addSystemTip(self.thinkingEnabled ? "已开启思考模式" : "已关闭思考模式")
+            }
+        }
+        
+        inputBar.onToggleCombine = { [weak self] in
+            guard let self = self else { return }
+            self.combineEnabled.toggle()
+            self.inputBar.setCombineEnabled(self.combineEnabled)
+            Task { @MainActor in
+                self.viewModel.addSystemTip(self.combineEnabled ? "已开启结合全文" : "已关闭结合全文")
+            }
         }
     }
     

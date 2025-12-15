@@ -23,6 +23,19 @@ public final class ChatViewModel {
     
     private let heightCache = MessageHeightCache()
     
+    private func scheduleUIRefresh(for id: UUID) {
+        uiThrottlePendingID = id
+        uiThrottleTimer?.invalidate()
+        let t = Timer(timeInterval: 0.12, repeats: false) { [weak self] _ in
+            guard let self = self, let pid = self.uiThrottlePendingID else { return }
+            if let updated = self.repository.fetchMessages(sessionID: self.session.id).first(where: { $0.id == pid }) {
+                self.onNewMessage?(updated)
+            }
+        }
+        uiThrottleTimer = t
+        RunLoop.main.add(t, forMode: .common)
+    }
+    
     // 草稿相关属性
     public private(set) var currentDraft: String = "" {
         didSet {
@@ -198,14 +211,7 @@ public final class ChatViewModel {
                         if !m.content.isEmpty { hasAnyToken = true }
                     }
 
-                    uiThrottlePendingID = assistantID
-                    uiThrottleTimer?.invalidate()
-                    uiThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
-                        guard let self = self, let id = self.uiThrottlePendingID else { return }
-                        if let updated = self.repository.fetchMessages(sessionID: self.session.id).first(where: { $0.id == id }) {
-                            self.onNewMessage?(updated)
-                        }
-                    }
+                    scheduleUIRefresh(for: assistantID)
                 }
 
                 // 正常结束：先结束流，再标记可重试，再刷新一次（让按钮出现）
@@ -242,6 +248,93 @@ public final class ChatViewModel {
     
     public func messages() -> [Message] {
         repository.fetchMessages(sessionID: session.id)
+    }
+    
+    public func showUserDisplay(text: String) {
+        let userMessage = Message(role: .user, content: text)
+        repository.appendMessage(sessionID: session.id, message: userMessage)
+        onNewMessage?(userMessage)
+    }
+    
+    public func beginAssistantPlaceholder() {
+        if isStreaming { cancelCurrentStream() }
+        let assistantID = UUID()
+        currentAssistantID = assistantID
+        repository.appendMessage(sessionID: session.id, message: Message(id: assistantID, role: .assistant, content: "", reasoning: nil))
+        if let appended = repository.fetchMessages(sessionID: session.id).last {
+            onNewMessage?(appended)
+        }
+        isStreaming = true
+    }
+    
+    public func streamAfterDisplay(sendText: String, config: AIModelConfig) {
+        if isStreaming && currentStreamTask != nil { cancelCurrentStream() }
+        
+        var msgs = repository.fetchMessages(sessionID: session.id)
+        if let idx = msgs.lastIndex(where: { $0.role == .user }) {
+            let orig = msgs[idx]
+            msgs[idx] = Message(id: orig.id, role: .user, content: sendText)
+        } else {
+            msgs.append(Message(role: .user, content: sendText))
+        }
+        msgs.removeAll(where: { $0.role == .assistant && $0.content.isEmpty })
+        
+        let s = sendUseCase.stream(session: session, messages: msgs, config: config)
+        
+        let assistantID = currentAssistantID ?? UUID()
+        if currentAssistantID == nil {
+            currentAssistantID = assistantID
+            repository.appendMessage(sessionID: session.id, message: Message(id: assistantID, role: .assistant, content: "", reasoning: nil))
+            if let appended = repository.fetchMessages(sessionID: session.id).last {
+                onNewMessage?(appended)
+            }
+        }
+        
+        isStreaming = true
+        
+        currentStreamTask = Task {
+            var contentBuffer = ""
+            var reasoningBuffer = ""
+            var hasAnyToken = false
+            
+            do {
+                for try await m in s {
+                    if Task.isCancelled { throw CancellationError() }
+                    
+                    if let r = m.reasoning {
+                        reasoningBuffer += r
+                        repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
+                        heightCache.invalidate(id: assistantID)
+                        hasAnyToken = true
+                    } else {
+                        contentBuffer += m.content
+                        repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
+                        heightCache.invalidate(id: assistantID)
+                        if !m.content.isEmpty { hasAnyToken = true }
+                    }
+                    
+                    scheduleUIRefresh(for: assistantID)
+                }
+                
+                isStreaming = false
+                currentStreamTask = nil
+                regeneratableAssistantIDs.insert(assistantID)
+                notifyAssistantUpdated(assistantID)
+                
+            } catch {
+                isStreaming = false
+                currentStreamTask = nil
+                regeneratableAssistantIDs.insert(assistantID)
+                notifyAssistantUpdated(assistantID)
+                
+                let mapped = ErrorMapper.map(error)
+                await MainActor.run {
+                    if mapped != .cancelled {
+                        self.addSystemTip(mapped.userMessage)
+                    }
+                }
+            }
+        }
     }
     
     
@@ -284,6 +377,7 @@ public final class ChatViewModel {
         } else {
             msgs.append(Message(role: .user, content: sendText))
         }
+        msgs.removeAll(where: { $0.role == .assistant && $0.content.isEmpty })
         
         let s = sendUseCase.stream(session: session, messages: msgs, config: config)
         
@@ -317,14 +411,7 @@ public final class ChatViewModel {
                         if !m.content.isEmpty { hasAnyToken = true }
                     }
                     
-                    uiThrottlePendingID = assistantID
-                    uiThrottleTimer?.invalidate()
-                    uiThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
-                        guard let self = self, let id = self.uiThrottlePendingID else { return }
-                        if let updated = self.repository.fetchMessages(sessionID: self.session.id).first(where: { $0.id == id }) {
-                            self.onNewMessage?(updated)
-                        }
-                    }
+                    scheduleUIRefresh(for: assistantID)
                 }
                 
                 isStreaming = false
@@ -395,14 +482,7 @@ public final class ChatViewModel {
                         heightCache.invalidate(id: assistantMessageID)
                     }
 
-                    uiThrottlePendingID = assistantMessageID
-                    uiThrottleTimer?.invalidate()
-                    uiThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
-                        guard let self = self, let id = self.uiThrottlePendingID else { return }
-                        if let updated = self.repository.fetchMessages(sessionID: self.session.id).first(where: { $0.id == id }) {
-                            self.onNewMessage?(updated)
-                        }
-                    }
+                    scheduleUIRefresh(for: assistantMessageID)
                 }
 
                 isStreaming = false
