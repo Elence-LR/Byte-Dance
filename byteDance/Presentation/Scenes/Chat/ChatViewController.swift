@@ -244,6 +244,9 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
             isReasoningExpanded: viewModel.isReasoningExpanded(messageID: message.id),
             showRegenerate: viewModel.canRegenerate(messageID: message.id)
         )
+        let isLast = indexPath.row == viewModel.messages().count - 1
+        let showLoading = isLast && viewModel.isStreaming && message.role == .assistant
+        cell.setLoading(showLoading)
         
         cell.onToggleReasoning = { [weak self] messageID in
             guard let self = self else { return }
@@ -312,7 +315,7 @@ extension ChatViewController {
         if hasTable { h += 180 }
         if listCount > 0 { h += CGFloat(min(listCount, 10) * 20) }
         if let atts = message.attachments { h += CGFloat(atts.count) * 220 }
-        if message.role == .assistant, message.reasoning != nil { h += 60 }
+        // 移除思考过程显示后的额外高度加成
         if len > 500 { h += 120 }
         let minH: CGFloat = 80
         let maxH: CGFloat = 900

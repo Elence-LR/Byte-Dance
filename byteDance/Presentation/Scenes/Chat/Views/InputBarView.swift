@@ -28,7 +28,7 @@ public final class InputBarView: UIView, UITextViewDelegate {
     
     private var textViewHeightConstraint: NSLayoutConstraint?
     private let minInputHeight: CGFloat = 36
-    private let maxInputHeight: CGFloat = 120
+    private let maxInputHeight: CGFloat = 180
     
     // 草稿
     private let draftStorage = DraftStorage()
@@ -94,6 +94,8 @@ public final class InputBarView: UIView, UITextViewDelegate {
         ])
         
         updateSendButtonUI()
+        updateTextViewHeight()
+        NotificationCenter.default.addObserver(self, selector: #selector(onTextDidChange(_:)), name: UITextView.textDidChangeNotification, object: textView)
     }
     
     // MARK: - Actions
@@ -117,6 +119,11 @@ public final class InputBarView: UIView, UITextViewDelegate {
     
     // MARK: - UITextViewDelegate
     public func textViewDidChange(_ textView: UITextView) {
+        updateTextViewHeight()
+        saveDraftDelayed()
+    }
+    
+    @objc private func onTextDidChange(_ note: Notification) {
         updateTextViewHeight()
         saveDraftDelayed()
     }
@@ -147,6 +154,10 @@ public final class InputBarView: UIView, UITextViewDelegate {
     
     public func setMode(_ mode: Mode) {
         self.mode = mode
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     // MARK: - 草稿逻辑

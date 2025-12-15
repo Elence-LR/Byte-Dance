@@ -11,6 +11,7 @@ public final class MessageCell: UITableViewCell {
 
     private let bubbleView = UIView()
     private let contentStack = UIStackView()
+    private let tailSpinner = UIActivityIndicatorView(style: .medium)
 
     // Reasoning UI
     private let reasoningContainer = UIView()
@@ -58,6 +59,7 @@ public final class MessageCell: UITableViewCell {
         contentStack.axis = .vertical
         contentStack.spacing = 2
         bubbleView.addSubview(contentStack)
+        tailSpinner.hidesWhenStopped = true
 
         leftLeading = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
         leftTrailingMax = bubbleView.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -64)
@@ -129,6 +131,8 @@ public final class MessageCell: UITableViewCell {
     public override func prepareForReuse() {
         super.prepareForReuse()
         contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        tailSpinner.stopAnimating()
+        tailSpinner.removeFromSuperview()
 
         currentMessageID = nil
         onToggleReasoning = nil
@@ -177,20 +181,7 @@ public final class MessageCell: UITableViewCell {
             regenerateButton.removeFromSuperview() // 可选：避免残留在旧 header
         }
         
-        // Reasoning
-        if message.role == .assistant,
-           let reasoning = message.reasoning,
-           !reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            reasoningContainer.isHidden = false
-            reasoningLabel.text = reasoning
-            reasoningLabel.isHidden = !isReasoningExpanded
-            let imgName = isReasoningExpanded ? "chevron.up" : "chevron.down"
-            reasoningButton.setImage(UIImage(systemName: imgName), for: .normal)
-            contentStack.addArrangedSubview(reasoningContainer)
-        } else {
-            reasoningContainer.isHidden = true
-            reasoningLabel.isHidden = true
-        }
+        
 
         // Text segments
         let segments = parseSegments(from: message.content)
@@ -298,6 +289,18 @@ public final class MessageCell: UITableViewCell {
         }
     }
 
+    public func setLoading(_ loading: Bool) {
+        if loading {
+            if !contentStack.arrangedSubviews.contains(tailSpinner) {
+                contentStack.addArrangedSubview(tailSpinner)
+            }
+            tailSpinner.startAnimating()
+        } else {
+            tailSpinner.stopAnimating()
+            tailSpinner.removeFromSuperview()
+        }
+    }
+    
     private func applyTextColor(_ color: UIColor) {
         for v in contentStack.arrangedSubviews {
             if let l = v as? UILabel {
