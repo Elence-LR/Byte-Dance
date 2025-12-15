@@ -39,16 +39,9 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
         DispatchQueue.main.async {
             self.navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(self.addTapped))
             
-            // 新增：归档/普通视图切换按钮 + 设置按钮
-            let archiveButton = UIBarButtonItem(
-                title: NSLocalizedString("Archived", comment: ""),
-                style: .plain,
-                target: self,
-                action: #selector(self.toggleArchiveView)
-            )
+            // 仅保留设置按钮，归档切换移至设置页
             let settingsButton = UIBarButtonItem(title: NSLocalizedString("Settings", comment: ""), style: .plain, target: self, action: #selector(self.settingsTapped))
-            
-            self.navigationItem.leftBarButtonItems = [archiveButton, settingsButton]
+            self.navigationItem.leftBarButtonItems = [settingsButton]
         }
         
         // 注册长按手势
@@ -94,15 +87,9 @@ public final class SessionListViewController: BaseViewController, UITableViewDat
         navigationController?.pushViewController(vc, animated: true)
     }
     
-    // 新增：切换归档/普通视图
-    @objc private func toggleArchiveView() {
-        showingArchived.toggle()
-        // 更新按钮标题
-        let title = showingArchived ?
-            NSLocalizedString("Active", comment: "") :
-            NSLocalizedString("Archived", comment: "")
-        navigationItem.leftBarButtonItems?.first?.title = title
-        // 重置搜索并刷新列表
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        showingArchived = UserDefaults.standard.bool(forKey: "session_list_show_archived")
         searchController.searchBar.text = ""
         updateSearchResults(for: searchController)
         tableView.reloadData()

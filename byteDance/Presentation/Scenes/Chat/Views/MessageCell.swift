@@ -5,6 +5,9 @@ import Down
 
 public final class MessageCell: UITableViewCell {
     public static let reuseId = "MessageCell"
+    private static let mdCache = NSCache<NSString, NSAttributedString>()
+    private enum Alignment { case left, right, center }
+    private var currentAlignment: Alignment?
 
     private let bubbleView = UIView()
     private let contentStack = UIStackView()
@@ -143,6 +146,7 @@ public final class MessageCell: UITableViewCell {
         
         onRegenerate = nil
         regenerateButton.isHidden = true
+        currentAlignment = nil
     }
 
     @objc private func didTapReasoning() {
@@ -194,11 +198,21 @@ public final class MessageCell: UITableViewCell {
         for seg in segments {
             switch seg.kind {
             case .text:
-                let text = try? Down(markdownString: seg.content).toAttributedString()
                 let label = UILabel()
                 label.numberOfLines = 0
                 label.font = .systemFont(ofSize: 18)
-                if let t = text { label.attributedText = tightenAttributedString(t) } else { label.text = seg.content }
+                let key = NSString(string: seg.content)
+                if let cached = MessageCell.mdCache.object(forKey: key) {
+                    label.attributedText = tightenAttributedString(cached)
+                } else {
+                    let text = try? Down(markdownString: seg.content).toAttributedString()
+                    if let t = text {
+                        MessageCell.mdCache.setObject(t, forKey: key)
+                        label.attributedText = tightenAttributedString(t)
+                    } else {
+                        label.text = seg.content
+                    }
+                }
                 contentStack.addArrangedSubview(label)
             case .code:
                 let codeView = CodeBlockView()
@@ -248,28 +262,37 @@ public final class MessageCell: UITableViewCell {
                 }
             }
     }
-        // Layout constraints
-        NSLayoutConstraint.deactivate([leftLeading, leftTrailingMax, rightTrailing, rightLeadingMin, centerConstraint])
-
-        switch message.role {
-        case .user:
-            leftLeading.isActive = false
-            leftTrailingMax.isActive = false
-            rightTrailing.isActive = true
-            rightLeadingMin.isActive = true
+        let desired: Alignment = {
+            switch message.role {
+            case .user: return .right
+            case .assistant: return .left
+            case .system: return .center
+            }
+        }()
+        if currentAlignment != desired {
+            NSLayoutConstraint.deactivate([leftLeading, leftTrailingMax, rightTrailing, rightLeadingMin, centerConstraint])
+            switch desired {
+            case .right:
+                rightTrailing.isActive = true
+                rightLeadingMin.isActive = true
+            case .left:
+                leftLeading.isActive = true
+                leftTrailingMax.isActive = true
+            case .center:
+                centerConstraint.isActive = true
+            }
+            currentAlignment = desired
+        }
+        switch desired {
+        case .right:
             bubbleView.backgroundColor = .systemBlue
             applyTextColor(.white)
-
-        case .assistant:
-            leftLeading.isActive = true
-            leftTrailingMax.isActive = true
+        case .left:
             bubbleView.backgroundColor = .secondarySystemBackground
             applyTextColor(.label)
             reasoningContainer.backgroundColor = UIColor.tertiarySystemFill
             reasoningLabel.textColor = .secondaryLabel
-
-        case .system:
-            centerConstraint.isActive = true
+        case .center:
             bubbleView.backgroundColor = .tertiarySystemFill
             applyTextColor(.secondaryLabel)
         }

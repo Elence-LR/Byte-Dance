@@ -272,9 +272,51 @@ public final class ChatViewController: BaseViewController, UITableViewDataSource
         return cell
     }
     
+    public func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
+        let msg = viewModel.messages()[indexPath.row]
+        let w = tableView.bounds.width
+        if let h = viewModel.cachedHeight(messageID: msg.id, width: w) { return h }
+        return smartEstimateHeight(for: msg, width: w)
+    }
+    
+    public func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        UITableView.automaticDimension
+    }
+    
+    public func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        let msg = viewModel.messages()[indexPath.row]
+        let w = tableView.bounds.width
+        let h = cell.bounds.height
+        viewModel.setCachedHeight(messageID: msg.id, width: w, height: h)
+    }
+    
     // MARK: - UITextViewDelegate
     public func textViewDidChange(_ textView: UITextView) {
         scheduleDraftSave(text: textView.text)
+    }
+}
+ 
+extension ChatViewController {
+    private func smartEstimateHeight(for message: Message, width: CGFloat) -> CGFloat {
+        let text = message.content
+        let len = text.count
+        var h: CGFloat = 96
+        let charsPerLine = 26.0
+        let lineHeight = 22.0
+        let lines = max(1.0, ceil(Double(len) / charsPerLine))
+        h += CGFloat(lines * lineHeight)
+        let hasCode = text.contains("```")
+        let hasTable = text.contains("|") && text.contains("---")
+        let listCount = text.split(separator: "\n").filter { $0.hasPrefix("- ") || $0.range(of: #"^\d+\.\s"#, options: .regularExpression) != nil }.count
+        if hasCode { h += 220 }
+        if hasTable { h += 180 }
+        if listCount > 0 { h += CGFloat(min(listCount, 10) * 20) }
+        if let atts = message.attachments { h += CGFloat(atts.count) * 220 }
+        if message.role == .assistant, message.reasoning != nil { h += 60 }
+        if len > 500 { h += 120 }
+        let minH: CGFloat = 80
+        let maxH: CGFloat = 900
+        return min(max(h, minH), maxH)
     }
 }
 

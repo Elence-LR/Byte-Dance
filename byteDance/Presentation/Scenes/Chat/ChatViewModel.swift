@@ -18,6 +18,10 @@ public final class ChatViewModel {
     private var currentStreamTask: Task<Void, Never>?
     private var currentAssistantID: UUID?
     private var regeneratableAssistantIDs: Set<UUID> = []
+    private var uiThrottleTimer: Timer?
+    private var uiThrottlePendingID: UUID?
+    
+    private let heightCache = MessageHeightCache()
     
     // 草稿相关属性
     public private(set) var currentDraft: String = "" {
@@ -185,15 +189,22 @@ public final class ChatViewModel {
                     if let r = m.reasoning {
                         reasoningBuffer += r
                         repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
+                        heightCache.invalidate(id: assistantID)
                         hasAnyToken = true
                     } else {
                         contentBuffer += m.content
                         repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
+                        heightCache.invalidate(id: assistantID)
                         if !m.content.isEmpty { hasAnyToken = true }
                     }
 
-                    if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
-                        onNewMessage?(updated)
+                    uiThrottlePendingID = assistantID
+                    uiThrottleTimer?.invalidate()
+                    uiThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
+                        guard let self = self, let id = self.uiThrottlePendingID else { return }
+                        if let updated = self.repository.fetchMessages(sessionID: self.session.id).first(where: { $0.id == id }) {
+                            self.onNewMessage?(updated)
+                        }
                     }
                 }
 
@@ -297,15 +308,22 @@ public final class ChatViewModel {
                     if let r = m.reasoning {
                         reasoningBuffer += r
                         repository.updateMessageReasoning(sessionID: session.id, messageID: assistantID, reasoning: reasoningBuffer)
+                        heightCache.invalidate(id: assistantID)
                         hasAnyToken = true
                     } else {
                         contentBuffer += m.content
                         repository.updateMessageContent(sessionID: session.id, messageID: assistantID, content: contentBuffer)
+                        heightCache.invalidate(id: assistantID)
                         if !m.content.isEmpty { hasAnyToken = true }
                     }
                     
-                    if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantID }) {
-                        onNewMessage?(updated)
+                    uiThrottlePendingID = assistantID
+                    uiThrottleTimer?.invalidate()
+                    uiThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
+                        guard let self = self, let id = self.uiThrottlePendingID else { return }
+                        if let updated = self.repository.fetchMessages(sessionID: self.session.id).first(where: { $0.id == id }) {
+                            self.onNewMessage?(updated)
+                        }
                     }
                 }
                 
@@ -352,6 +370,7 @@ public final class ChatViewModel {
         // 清空这个 assistant 气泡内容，复用同一个 cell
         repository.updateMessageContent(sessionID: session.id, messageID: assistantMessageID, content: "")
         repository.updateMessageReasoning(sessionID: session.id, messageID: assistantMessageID, reasoning: "")
+        heightCache.invalidate(id: assistantMessageID)
 
         currentAssistantID = assistantMessageID
         isStreaming = true
@@ -369,13 +388,20 @@ public final class ChatViewModel {
                     if let r = m.reasoning {
                         reasoningBuffer += r
                         repository.updateMessageReasoning(sessionID: session.id, messageID: assistantMessageID, reasoning: reasoningBuffer)
+                        heightCache.invalidate(id: assistantMessageID)
                     } else {
                         contentBuffer += m.content
                         repository.updateMessageContent(sessionID: session.id, messageID: assistantMessageID, content: contentBuffer)
+                        heightCache.invalidate(id: assistantMessageID)
                     }
 
-                    if let updated = repository.fetchMessages(sessionID: session.id).first(where: { $0.id == assistantMessageID }) {
-                        onNewMessage?(updated)
+                    uiThrottlePendingID = assistantMessageID
+                    uiThrottleTimer?.invalidate()
+                    uiThrottleTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
+                        guard let self = self, let id = self.uiThrottlePendingID else { return }
+                        if let updated = self.repository.fetchMessages(sessionID: self.session.id).first(where: { $0.id == id }) {
+                            self.onNewMessage?(updated)
+                        }
                     }
                 }
 
@@ -420,6 +446,18 @@ public final class ChatViewModel {
     }
     
     
-
-
+    
+    
+}
+ 
+extension ChatViewModel {
+    public func cachedHeight(messageID: UUID, width: CGFloat) -> CGFloat? {
+        heightCache.height(for: messageID, width: width)
+    }
+    public func setCachedHeight(messageID: UUID, width: CGFloat, height: CGFloat) {
+        heightCache.setHeight(height, for: messageID, width: width)
+    }
+    public func invalidateHeight(messageID: UUID) {
+        heightCache.invalidate(id: messageID)
+    }
 }
