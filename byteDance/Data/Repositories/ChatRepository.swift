@@ -73,6 +73,12 @@ public final class ChatRepository: ChatRepositoryProtocol {
         sessions.removeAll { $0.id == id }
         saveSessions(sessions) // 同步到本地存储
     }
+    
+    public func updateSession(_ session: Session) {
+        guard let index = sessions.firstIndex(where: { $0.id == session.id }) else { return }
+        sessions[index] = session
+        saveSessions(sessions)
+    }
        
     // MARK: - 新增：状态管理方法（实现协议）
     

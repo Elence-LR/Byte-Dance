@@ -11,8 +11,9 @@ public struct Session: Codable, Equatable, Identifiable {
     public var title: String
     public var messages: [Message]
     public var archived: Bool
-    // 新增状态字段
     public var isCurrent: Bool = false // 是否为当前活跃会话
+    public var isPinned: Bool = false  // 置顶状态
+    public var updatedAt: Date = Date()  // 最后更新时间
     
      public init(
          id: UUID = UUID(),
